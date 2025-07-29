@@ -50,12 +50,13 @@ func main() {
 	templateService := services.NewTemplateService(db)
 	categoryService := services.NewCategoryService(db)
 	blogService := services.NewBlogService(db)
+	userService := services.NewUserService(db)
 
 	// Initialize handlers
 	templateHandler := handlers.NewTemplateHandler(templateService)
 	categoryHandler := handlers.NewCategoryHandler(categoryService)
 	blogHandler := handlers.NewBlogHandler(blogService)
-	userHandler := handlers.NewUserHandler()
+	userHandler := handlers.NewUserHandler(userService)
 
 	// Health check endpoint
 	r.GET("/health", func(c *gin.Context) {
@@ -75,7 +76,15 @@ func main() {
 				"message": "Template Store API v1",
 			})
 		})
-		api.GET("/users", userHandler.ListUsers)
+
+		// User routes
+		users := api.Group("/users")
+		{
+			users.GET("", userHandler.ListUsers)
+			users.POST("", userHandler.CreateUser)
+			users.GET("/:id", userHandler.GetUser)
+			users.POST("/seed", userHandler.SeedUsers)
+		}
 
 		// Template routes
 		templates := api.Group("/templates")
