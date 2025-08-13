@@ -16,8 +16,9 @@ NC='\033[0m' # No Color
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PID_DIR="$PROJECT_ROOT/tmp/pids"
 LOG_DIR="$PROJECT_ROOT/tmp/logs"
-BACKEND_PORT=8080
-FRONTEND_PORT=3000
+# Allow env override
+BACKEND_PORT="${BACKEND_PORT:-8080}"
+FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 
 # Create directories for PIDs and logs
 mkdir -p "$PID_DIR" "$LOG_DIR"
@@ -200,9 +201,9 @@ start_frontend() {
         fi
     fi
 
-    # Start frontend server
+    # Start frontend server (pass through FRONTEND_PORT to app)
     cd "$PROJECT_ROOT"
-    nohup go run cmd/web/main.go > "$LOG_DIR/frontend.log" 2>&1 &
+    FRONTEND_PORT=$FRONTEND_PORT nohup go run cmd/web/main.go > "$LOG_DIR/frontend.log" 2>&1 &
     FRONTEND_PID=$!
     echo $FRONTEND_PID > "$PID_DIR/frontend.pid"
 

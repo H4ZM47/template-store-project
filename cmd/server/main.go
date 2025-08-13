@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"
@@ -31,10 +32,11 @@ func main() {
 	}
 
 	// Initialize router
-	r := gin.Default()
-
-	// Add CORS middleware
+	r := gin.New()
+	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
+	// Enable permissive CORS for development
+	r.Use(cors.Default())
 
 	// Connect to the database
 	db, err := services.ConnectDB()
@@ -70,7 +72,6 @@ func main() {
 	// API routes group
 	api := r.Group("/api/v1")
 	{
-		// Placeholder for future API endpoints
 		api.GET("/", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
 				"message": "Template Store API v1",

@@ -16,8 +16,8 @@ NC='\033[0m' # No Color
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PID_DIR="$PROJECT_ROOT/tmp/pids"
 LOG_DIR="$PROJECT_ROOT/tmp/logs"
-BACKEND_PORT=8080
-FRONTEND_PORT=3000
+BACKEND_PORT="${BACKEND_PORT:-8080}"
+FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 
 # Function to print colored output
 print_status() {

@@ -1,8 +1,52 @@
 // TemplateStore Frontend Application
 
+// Data models
+class Category {
+    constructor({ id, name, created_at, updated_at }) {
+        this.id = id ?? null;
+        this.name = name ?? '';
+        this.created_at = created_at ?? null;
+        this.updated_at = updated_at ?? null;
+    }
+}
+
+class TemplateModel {
+    constructor(obj = {}) {
+        // Normalize keys coming from API (Category vs category)
+        const category = obj.category || obj.Category || null;
+        this.id = obj.id ?? null;
+        this.name = obj.name ?? '';
+        this.file_info = obj.file_info ?? '';
+        this.category_id = obj.category_id ?? (category ? category.id : null);
+        this.category = category ? new Category(category) : null;
+        this.price = typeof obj.price === 'number' ? obj.price : 0;
+        this.preview_data = obj.preview_data ?? '';
+        this.created_at = obj.created_at ?? null;
+        this.updated_at = obj.updated_at ?? null;
+    }
+}
+
+class BlogPostModel {
+    constructor(obj = {}) {
+        // Normalize keys (author/category provided by API handlers)
+        this.id = obj.id ?? null;
+        this.title = obj.title ?? '';
+        this.content = obj.content ?? '';
+        this.html_content = obj.html_content ?? '';
+        this.author_id = obj.author_id ?? (obj.author ? obj.author.id : null);
+        this.author = obj.author || null;
+        this.category_id = obj.category_id ?? (obj.category ? obj.category.id : null);
+        this.category = obj.category ? new Category(obj.category) : null;
+        this.seo = obj.seo ?? '';
+        this.created_at = obj.created_at ?? null;
+        this.updated_at = obj.updated_at ?? null;
+        this.excerpt = obj.excerpt ?? '';
+    }
+}
+
 class TemplateStoreApp {
     constructor() {
-        this.apiBase = 'http://localhost:8080/api/v1';
+        this.apiBase = '/api/v1';
         this.templates = [];
         this.blogPosts = [];
         this.categories = [];
@@ -81,7 +125,7 @@ class TemplateStoreApp {
         try {
             const response = await fetch(`${this.apiBase}/categories`);
             const data = await response.json();
-            this.categories = data.categories;
+            this.categories = (data.categories || []).map(c => new Category(c));
             this.populateCategoryFilter();
         } catch (error) {
             console.error('Error loading categories:', error);
@@ -108,11 +152,12 @@ class TemplateStoreApp {
             
             const response = await fetch(url);
             const data = await response.json();
+            const newItems = (data.templates || []).map(t => new TemplateModel(t));
             
             if (page === 0) {
-                this.templates = data.templates;
+                this.templates = newItems;
             } else {
-                this.templates = [...this.templates, ...data.templates];
+                this.templates = [...this.templates, ...newItems];
             }
             
             this.renderTemplates();
@@ -120,7 +165,7 @@ class TemplateStoreApp {
             
             // Hide load more button if no more templates
             const loadMoreBtn = document.getElementById('load-more');
-            loadMoreBtn.style.display = data.templates.length < this.templateLimit ? 'none' : 'block';
+            loadMoreBtn.style.display = newItems.length < this.templateLimit ? 'none' : 'block';
             
         } catch (error) {
             console.error('Error loading templates:', error);
@@ -135,11 +180,12 @@ class TemplateStoreApp {
             
             const response = await fetch(url);
             const data = await response.json();
+            const newItems = (data.posts || []).map(p => new BlogPostModel(p));
             
             if (page === 0) {
-                this.blogPosts = data.posts;
+                this.blogPosts = newItems;
             } else {
-                this.blogPosts = [...this.blogPosts, ...data.posts];
+                this.blogPosts = [...this.blogPosts, ...newItems];
             }
             
             this.renderBlogPosts();
@@ -147,7 +193,7 @@ class TemplateStoreApp {
             
             // Hide load more button if no more posts
             const loadMoreBtn = document.getElementById('load-more-blog');
-            loadMoreBtn.style.display = data.posts.length < this.blogLimit ? 'none' : 'block';
+            loadMoreBtn.style.display = newItems.length < this.blogLimit ? 'none' : 'block';
             
         } catch (error) {
             console.error('Error loading blog posts:', error);
@@ -224,7 +270,7 @@ class TemplateStoreApp {
         card.className = 'blog-card bg-white rounded-lg shadow-md overflow-hidden';
         
         const excerpt = post.excerpt || 'No preview available';
-        const authorName = post.author ? post.author.name : 'Unknown Author';
+        const authorName = post.author ? (post.author.name || 'Unknown Author') : 'Unknown Author';
         const categoryName = post.category ? post.category.name : 'Uncategorized';
         
         card.innerHTML = `
@@ -236,7 +282,7 @@ class TemplateStoreApp {
                 <p class="text-gray-600 mb-4 line-clamp-3">${excerpt}</p>
                 <div class="flex items-center justify-between text-sm text-gray-500">
                     <span>By ${authorName}</span>
-                    <span>${new Date(post.created_at).toLocaleDateString()}</span>
+                    <span>${post.created_at ? new Date(post.created_at).toLocaleDateString() : ''}</span>
                 </div>
                 <button class="mt-4 w-full bg-primary text-white px-4 py-2 rounded-lg hover:bg-secondary transition-colors"
                         onclick="app.readBlogPost(${post.id})">
@@ -252,7 +298,7 @@ class TemplateStoreApp {
         try {
             const response = await fetch(`${this.apiBase}/templates/${templateId}`);
             const data = await response.json();
-            const template = data.template;
+            const template = new TemplateModel(data.template || {});
             
             this.showTemplateModal(template);
         } catch (error) {
@@ -317,7 +363,7 @@ class TemplateStoreApp {
         try {
             const response = await fetch(`${this.apiBase}/blog/${postId}`);
             const data = await response.json();
-            const post = data.post;
+            const post = new BlogPostModel(data.post || {});
             
             this.showBlogPostModal(post);
         } catch (error) {
@@ -335,9 +381,9 @@ class TemplateStoreApp {
         content.innerHTML = `
             <div class="space-y-6">
                 <div class="flex items-center space-x-4 text-sm text-gray-500">
-                    <span>By ${post.author ? post.author.name : 'Unknown Author'}</span>
+                    <span>By ${post.author ? (post.author.name || 'Unknown Author') : 'Unknown Author'}</span>
                     <span>•</span>
-                    <span>${new Date(post.created_at).toLocaleDateString()}</span>
+                    <span>${post.created_at ? new Date(post.created_at).toLocaleDateString() : ''}</span>
                     ${post.category ? `<span>•</span><span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-full">${post.category.name}</span>` : ''}
                 </div>
                 <div class="prose max-w-none">
