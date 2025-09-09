@@ -214,6 +214,16 @@ func (h *BlogHandler) GetBlogPostsByCategory(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"posts": processedPosts})
 }
 
+// SeedBlogPosts handles POST /api/v1/blog/seed
+func (h *BlogHandler) SeedBlogPosts(c *gin.Context) {
+	if err := h.blogService.SeedBlogPosts(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to seed blog posts"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Blog posts seeded successfully"})
+}
+
 // GetBlogPostsByAuthor handles GET /api/v1/blog/author/:author_id
 func (h *BlogHandler) GetBlogPostsByAuthor(c *gin.Context) {
 	authorIDStr := c.Param("author_id")
