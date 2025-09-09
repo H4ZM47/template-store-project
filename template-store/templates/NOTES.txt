@@ -1,0 +1,35 @@
+1. Get the application URL by running these commands:
+{{- if .Values.ingress.enabled }}
+  {{- $host := (index .Values.ingress.hosts 0).host }}
+  http://{{ $host }}
+{{- else if contains "NodePort" .Values.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "template-store.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.service.type }}
+  NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+        You can watch the status of by running 'kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "template-store.fullname" . }}'
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "template-store.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo http://$SERVICE_IP:{{ .Values.service.port }}
+{{- else if contains "ClusterIP" .Values.service.type }}
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "template-store.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 8080:{{ .Values.service.port }}
+{{- end }}
+
+{{- if .Values.postgresql.enabled }}
+2. Get the PostgreSQL database credentials:
+   PG_USER={{ .Values.postgresql.auth.username }}
+   PG_DATABASE={{ .Values.postgresql.auth.database }}
+   PG_PASSWORD=$(kubectl get secret --namespace {{ .Release.Namespace }} {{ printf "%s-postgresql" .Release.Name }} -o jsonpath="{.data.postgres-password}" | base64 --decode)
+
+   To connect to your database run the following command:
+   kubectl run {{ include "template-store.fullname" . }}-client --rm --tty -i --restart='Never' --namespace {{ .Release.Namespace }} --image docker.io/bitnami/postgresql:13-debian-10-r152 --env="PGPASSWORD=$PG_PASSWORD" \
+     --command -- psql --host {{ printf "%s-postgresql" .Release.Name }} -U $PG_USER -d $PG_DATABASE -p 5432
+{{- end }}
+
+3. IMPORTANT: This chart assumes a Docker image has been built that contains the application source code and the `go` compiler, so that `go run` can be used to start the servers. You will need to build and push this image to your repository:
+
+   Image: {{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}
+
+   You must also set the required secret values in your custom `values.yaml` file or using `--set` flags during installation. See the `values.yaml` file for the list of required secrets.

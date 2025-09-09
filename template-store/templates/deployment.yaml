@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "template-store.fullname" . }}
+  labels:
+    {{- include "template-store.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "template-store.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "template-store.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "template-store.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: backend
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args: ["go run cmd/server/main.go"]
+          ports:
+            - name: http-backend
+              containerPort: {{ .Values.config.PORT }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "template-store.fullname" . }}-config
+            - secretRef:
+                name: {{ include "template-store.fullname" . }}-secrets
+          # The database host is the name of the postgresql service from the subchart
+          env:
+            - name: DB_HOST
+              value: {{ printf "%s-postgresql" .Release.Name | quote }}
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_USER
+              value: {{ .Values.postgresql.auth.username | quote }}
+            - name: DB_NAME
+              value: {{ .Values.postgresql.auth.database | quote }}
+            - name: DB_SSLMODE
+              value: {{ .Values.database.sslmode | quote }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ printf "%s-postgresql" .Release.Name }}
+                  key: postgres-password
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http-backend
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http-backend
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
+        - name: frontend
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args: ["go run cmd/web/main.go"]
+          ports:
+            - name: http-frontend
+              containerPort: {{ .Values.config.FRONTEND_PORT }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "template-store.fullname" . }}-config
+          # The frontend proxies to the backend on localhost, which works because they are in the same pod
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http-frontend
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

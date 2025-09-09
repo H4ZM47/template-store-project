@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "template-store.fullname" . }}-config
+  labels:
+    {{- include "template-store.labels" . | nindent 4 }}
+data:
+  GIN_MODE: {{ .Values.config.GIN_MODE | quote }}
+  PORT: {{ .Values.config.PORT | quote }}
+  FRONTEND_PORT: {{ .Values.config.FRONTEND_PORT | quote }}
+  DB_SSLMODE: {{ .Values.database.sslmode | quote }}
+  # The other DB connection details are handled directly in the deployment
+  # to use the values from the postgresql subchart secret.
