@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 
 	"template-store/internal/config"
 	"template-store/internal/handlers"
@@ -18,8 +19,15 @@ import (
 )
 
 func main() {
+	// Declare all variables that will be initialized with a potential error.
+	var db *gorm.DB
+	var authService services.AuthService
+	var storageService services.StorageService
+	var paymentService services.PaymentService
+	var err error
+
 	// Load environment variables from .env file
-	if err := godotenv.Load(); err != nil {
+	if err = godotenv.Load(); err != nil {
 		log.Println("No .env file found, using system environment variables")
 	}
 
@@ -42,25 +50,31 @@ func main() {
 	r.Use(cors.Default())
 
 	// Connect to the database
-	db, err := services.ConnectDB()
+	db, err = services.ConnectDB()
 	if err != nil {
 		logger.Fatalf("Failed to connect to database: %v", err)
 	}
 	// Auto-migrate models
-	if err := models.AutoMigrate(db); err != nil {
+	if err = models.AutoMigrate(db); err != nil {
 		logger.Fatalf("Failed to migrate database: %v", err)
 	}
 
 	// Initialize services
-	authService, err := services.NewAuthService(cfg)
+	if gin.Mode() == gin.DebugMode {
+		authService, err = services.NewMockAuthService(cfg)
+	} else {
+		authService, err = services.NewAuthService(cfg)
+	}
 	if err != nil {
 		logger.Fatalf("Failed to initialize auth service: %v", err)
 	}
-	storageService, err := services.NewStorageService(cfg)
+
+	storageService, err = services.NewStorageService(cfg)
 	if err != nil {
 		logger.Fatalf("Failed to initialize storage service: %v", err)
 	}
-	paymentService, err := services.NewPaymentService(cfg)
+
+	paymentService, err = services.NewPaymentService(cfg)
 	if err != nil {
 		logger.Fatalf("Failed to initialize payment service: %v", err)
 	}
@@ -111,7 +125,14 @@ func main() {
 
 		// Authenticated routes group
 		authenticated := api.Group("/")
-		authenticated.Use(middleware.AuthMiddleware(cfg))
+		if gin.Mode() != gin.DebugMode {
+			authenticated.Use(middleware.AuthMiddleware(cfg))
+		} else {
+			// In debug mode, use a dummy middleware that does nothing
+			authenticated.Use(func(c *gin.Context) {
+				c.Next()
+			})
+		}
 		{
 			// Checkout route
 			authenticated.POST("/checkout", paymentHandler.CreateCheckoutSession)
@@ -158,6 +179,7 @@ func main() {
 				templates.GET("", templateHandler.ListTemplates)
 				templates.GET("/:id", templateHandler.GetTemplate)
 				templates.GET("/category/:category_id", templateHandler.GetTemplatesByCategory)
+				templates.POST("/seed", templateHandler.SeedTemplates)
 			}
 
 			// Category routes
@@ -189,7 +211,7 @@ func main() {
 	}
 
 	logger.Infof("Starting server on port %s", port)
-	if err := r.Run(":" + port); err != nil {
+	if err = r.Run(":" + port); err != nil {
 		logger.Fatalf("Failed to start server: %v", err)
 	}
 }

@@ -5,7 +5,7 @@ import (
 	appconfig "template-store/internal/config"
 
 	"github.com/stripe/stripe-go/v72"
-	"github.com/stripe/stripe-go/v72/checkout"
+	"github.com/stripe/stripe-go/v72/checkout/session"
 )
 
 // PaymentService defines the interface for payment operations.
@@ -48,13 +48,15 @@ func (s *stripePaymentService) CreateCheckoutSession(amount int64, currency stri
 		Mode:       stripe.String(string(stripe.CheckoutSessionModePayment)),
 		SuccessURL: stripe.String(successURL),
 		CancelURL:  stripe.String(cancelURL),
-		Metadata:   metadata,
+		PaymentIntentData: &stripe.CheckoutSessionPaymentIntentDataParams{
+			Metadata: metadata,
+		},
 	}
 
-	session, err := checkout.New(params)
+	sess, err := session.New(params)
 	if err != nil {
 		return nil, err
 	}
 
-	return session, nil
+	return sess, nil
 }

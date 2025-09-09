@@ -207,3 +207,13 @@ func (h *TemplateHandler) GetTemplatesByCategory(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"templates": templates})
 }
+
+// SeedTemplates handles POST /api/v1/templates/seed
+func (h *TemplateHandler) SeedTemplates(c *gin.Context) {
+	if err := h.templateService.SeedTemplates(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to seed templates"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Templates seeded successfully"})
+}

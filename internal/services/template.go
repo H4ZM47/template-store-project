@@ -15,6 +15,7 @@ type TemplateService interface {
 	UpdateTemplate(id uint, updates map[string]interface{}) error
 	DeleteTemplate(id uint) error
 	GetTemplatesByCategory(categoryID uint) ([]models.Template, error)
+	SeedTemplates() error
 }
 
 // templateServiceImpl is the concrete implementation of the TemplateService interface.
@@ -107,4 +108,33 @@ func (s *templateServiceImpl) GetTemplatesByCategory(categoryID uint) ([]models.
 	var templates []models.Template
 	err := s.db.Where("category_id = ?", categoryID).Preload("Category").Find(&templates).Error
 	return templates, err
+}
+
+// SeedTemplates seeds the database with initial templates
+func (s *templateServiceImpl) SeedTemplates() error {
+	templates := []models.Template{
+		{Name: "Modern Corporate Website", CategoryID: 1, Price: 49, FileInfo: "Responsive HTML5/CSS3 template for corporate sites."},
+		{Name: "Creative Portfolio", CategoryID: 8, Price: 29, FileInfo: "A stylish portfolio template for designers and photographers."},
+		{Name: "E-commerce Storefront", CategoryID: 7, Price: 99, FileInfo: "Feature-rich template for online stores."},
+		{Name: "Minimalist Blog", CategoryID: 1, Price: 19, FileInfo: "A clean and simple blog template."},
+		{Name: "Product Launch Page", CategoryID: 6, Price: 25, FileInfo: "A one-page template for launching new products."},
+		{Name: "Real Estate Listing", CategoryID: 1, Price: 39, FileInfo: "Template for real estate agencies and listings."},
+		{Name: "SaaS Landing Page", CategoryID: 6, Price: 35, FileInfo: "High-converting landing page for SaaS products."},
+		{Name: "Restaurant Website", CategoryID: 1, Price: 39, FileInfo: "Template for restaurants, cafes, and bars."},
+		{Name: "Mobile App Showcase", CategoryID: 6, Price: 29, FileInfo: "Showcase your mobile app with this modern template."},
+		{Name: "Startup Pitch Deck", CategoryID: 5, Price: 15, FileInfo: "Professional presentation template for startups."},
+		{Name: "Weekly Newsletter", CategoryID: 2, Price: 9, FileInfo: "A responsive email template for newsletters."},
+		{Name: "Flash Sale Promotion", CategoryID: 2, Price: 5, FileInfo: "Email template for flash sales and promotions."},
+	}
+
+	for _, template := range templates {
+		if err := s.db.Create(&template).Error; err != nil {
+			// Don't error out if a template already exists, just continue
+			if !errors.Is(err, gorm.ErrDuplicatedKey) {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
