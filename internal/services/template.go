@@ -7,16 +7,28 @@ import (
 	"gorm.io/gorm"
 )
 
-type TemplateService struct {
+// TemplateService defines the interface for template-related operations.
+type TemplateService interface {
+	CreateTemplate(template *models.Template) error
+	GetTemplate(id uint) (*models.Template, error)
+	ListTemplates(categoryID *uint, search *string, limit, offset int) ([]models.Template, int64, error)
+	UpdateTemplate(id uint, updates map[string]interface{}) error
+	DeleteTemplate(id uint) error
+	GetTemplatesByCategory(categoryID uint) ([]models.Template, error)
+}
+
+// templateServiceImpl is the concrete implementation of the TemplateService interface.
+type templateServiceImpl struct {
 	db *gorm.DB
 }
 
-func NewTemplateService(db *gorm.DB) *TemplateService {
-	return &TemplateService{db: db}
+// NewTemplateService creates a new TemplateService.
+func NewTemplateService(db *gorm.DB) TemplateService {
+	return &templateServiceImpl{db: db}
 }
 
 // CreateTemplate creates a new template
-func (s *TemplateService) CreateTemplate(template *models.Template) error {
+func (s *templateServiceImpl) CreateTemplate(template *models.Template) error {
 	if template.Name == "" {
 		return errors.New("template name is required")
 	}
@@ -28,7 +40,7 @@ func (s *TemplateService) CreateTemplate(template *models.Template) error {
 }
 
 // GetTemplate retrieves a template by ID
-func (s *TemplateService) GetTemplate(id uint) (*models.Template, error) {
+func (s *templateServiceImpl) GetTemplate(id uint) (*models.Template, error) {
 	var template models.Template
 	err := s.db.Preload("Category").First(&template, id).Error
 	if err != nil {
@@ -38,7 +50,7 @@ func (s *TemplateService) GetTemplate(id uint) (*models.Template, error) {
 }
 
 // ListTemplates retrieves all templates with optional filtering
-func (s *TemplateService) ListTemplates(categoryID *uint, search *string, limit, offset int) ([]models.Template, int64, error) {
+func (s *templateServiceImpl) ListTemplates(categoryID *uint, search *string, limit, offset int) ([]models.Template, int64, error) {
 	var templates []models.Template
 	var total int64
 
@@ -72,7 +84,7 @@ func (s *TemplateService) ListTemplates(categoryID *uint, search *string, limit,
 }
 
 // UpdateTemplate updates an existing template
-func (s *TemplateService) UpdateTemplate(id uint, updates map[string]interface{}) error {
+func (s *templateServiceImpl) UpdateTemplate(id uint, updates map[string]interface{}) error {
 	if name, exists := updates["name"]; exists && name == "" {
 		return errors.New("template name cannot be empty")
 	}
@@ -86,12 +98,12 @@ func (s *TemplateService) UpdateTemplate(id uint, updates map[string]interface{}
 }
 
 // DeleteTemplate deletes a template by ID
-func (s *TemplateService) DeleteTemplate(id uint) error {
+func (s *templateServiceImpl) DeleteTemplate(id uint) error {
 	return s.db.Delete(&models.Template{}, id).Error
 }
 
 // GetTemplatesByCategory retrieves templates filtered by category
-func (s *TemplateService) GetTemplatesByCategory(categoryID uint) ([]models.Template, error) {
+func (s *templateServiceImpl) GetTemplatesByCategory(categoryID uint) ([]models.Template, error) {
 	var templates []models.Template
 	err := s.db.Where("category_id = ?", categoryID).Preload("Category").Find(&templates).Error
 	return templates, err

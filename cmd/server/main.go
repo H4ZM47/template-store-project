@@ -10,16 +10,21 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"
 
+	"template-store/internal/config"
 	"template-store/internal/handlers"
+	"template-store/internal/middleware"
 	"template-store/internal/models"
 	"template-store/internal/services"
 )
 
 func main() {
-	// Load environment variables
+	// Load environment variables from .env file
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using system environment variables")
 	}
+
+	// Load configuration
+	cfg := config.Load()
 
 	// Set up logging
 	logger := logrus.New()
@@ -27,9 +32,7 @@ func main() {
 	logger.SetOutput(os.Stdout)
 
 	// Set Gin mode
-	if os.Getenv("GIN_MODE") == "" {
-		gin.SetMode(gin.ReleaseMode)
-	}
+	gin.SetMode(cfg.Server.Mode)
 
 	// Initialize router
 	r := gin.New()
@@ -43,22 +46,37 @@ func main() {
 	if err != nil {
 		logger.Fatalf("Failed to connect to database: %v", err)
 	}
-	// Auto-migrate User model
+	// Auto-migrate models
 	if err := models.AutoMigrate(db); err != nil {
 		logger.Fatalf("Failed to migrate database: %v", err)
 	}
 
 	// Initialize services
+	authService, err := services.NewAuthService(cfg)
+	if err != nil {
+		logger.Fatalf("Failed to initialize auth service: %v", err)
+	}
+	storageService, err := services.NewStorageService(cfg)
+	if err != nil {
+		logger.Fatalf("Failed to initialize storage service: %v", err)
+	}
+	paymentService, err := services.NewPaymentService(cfg)
+	if err != nil {
+		logger.Fatalf("Failed to initialize payment service: %v", err)
+	}
 	templateService := services.NewTemplateService(db)
 	categoryService := services.NewCategoryService(db)
 	blogService := services.NewBlogService(db)
 	userService := services.NewUserService(db)
+	orderService := services.NewOrderService(db)
 
 	// Initialize handlers
-	templateHandler := handlers.NewTemplateHandler(templateService)
+	authHandler := handlers.NewAuthHandler(authService)
+	templateHandler := handlers.NewTemplateHandler(templateService, storageService)
 	categoryHandler := handlers.NewCategoryHandler(categoryService)
 	blogHandler := handlers.NewBlogHandler(blogService)
 	userHandler := handlers.NewUserHandler(userService)
+	paymentHandler := handlers.NewPaymentHandler(paymentService, templateService, orderService, userService, cfg.Stripe.WebhookSecret)
 
 	// Health check endpoint
 	r.GET("/health", func(c *gin.Context) {
@@ -78,52 +96,94 @@ func main() {
 			})
 		})
 
-		// User routes
-		users := api.Group("/users")
+		// Auth routes
+		auth := api.Group("/auth")
 		{
-			users.GET("", userHandler.ListUsers)
-			users.POST("", userHandler.CreateUser)
-			users.GET("/:id", userHandler.GetUser)
-			users.POST("/seed", userHandler.SeedUsers)
+			auth.POST("/register", authHandler.Register)
+			auth.POST("/login", authHandler.Login)
 		}
 
-		// Template routes
-		templates := api.Group("/templates")
+		// Webhook routes
+		webhooks := api.Group("/webhooks")
 		{
-			templates.GET("", templateHandler.ListTemplates)
-			templates.POST("", templateHandler.CreateTemplate)
-			templates.GET("/:id", templateHandler.GetTemplate)
-			templates.PUT("/:id", templateHandler.UpdateTemplate)
-			templates.DELETE("/:id", templateHandler.DeleteTemplate)
-			templates.GET("/category/:category_id", templateHandler.GetTemplatesByCategory)
+			webhooks.POST("/stripe", paymentHandler.StripeWebhook)
 		}
 
-		// Category routes
-		categories := api.Group("/categories")
+		// Authenticated routes group
+		authenticated := api.Group("/")
+		authenticated.Use(middleware.AuthMiddleware(cfg))
 		{
-			categories.GET("", categoryHandler.ListCategories)
-			categories.POST("", categoryHandler.CreateCategory)
-			categories.GET("/:id", categoryHandler.GetCategory)
-			categories.PUT("/:id", categoryHandler.UpdateCategory)
-			categories.DELETE("/:id", categoryHandler.DeleteCategory)
-			categories.POST("/seed", categoryHandler.SeedCategories)
+			// Checkout route
+			authenticated.POST("/checkout", paymentHandler.CreateCheckoutSession)
+
+			// User routes
+			users := authenticated.Group("/users")
+			{
+				users.GET("", userHandler.ListUsers)
+				users.POST("", userHandler.CreateUser)
+				users.GET("/:id", userHandler.GetUser)
+				users.POST("/seed", userHandler.SeedUsers)
+			}
+
+			// Template routes
+			templates := authenticated.Group("/templates")
+			{
+				templates.POST("", templateHandler.CreateTemplate)
+				templates.PUT("/:id", templateHandler.UpdateTemplate)
+				templates.DELETE("/:id", templateHandler.DeleteTemplate)
+			}
+
+			// Blog routes
+			blog := authenticated.Group("/blog")
+			{
+				blog.POST("", blogHandler.CreateBlogPost)
+				blog.PUT("/:id", blogHandler.UpdateBlogPost)
+				blog.DELETE("/:id", blogHandler.DeleteBlogPost)
+			}
 		}
 
-		// Blog routes
-		blog := api.Group("/blog")
+		// Public routes
+		public := api.Group("/")
 		{
-			blog.GET("", blogHandler.ListBlogPosts)
-			blog.POST("", blogHandler.CreateBlogPost)
-			blog.GET("/:id", blogHandler.GetBlogPost)
-			blog.PUT("/:id", blogHandler.UpdateBlogPost)
-			blog.DELETE("/:id", blogHandler.DeleteBlogPost)
-			blog.GET("/category/:category_id", blogHandler.GetBlogPostsByCategory)
-			blog.GET("/author/:author_id", blogHandler.GetBlogPostsByAuthor)
+			// Payment routes
+			payments := public.Group("/payment")
+			{
+				payments.GET("/success", paymentHandler.PaymentSuccess)
+				payments.GET("/cancel", paymentHandler.PaymentCancel)
+			}
+
+			// Template routes
+			templates := public.Group("/templates")
+			{
+				templates.GET("", templateHandler.ListTemplates)
+				templates.GET("/:id", templateHandler.GetTemplate)
+				templates.GET("/category/:category_id", templateHandler.GetTemplatesByCategory)
+			}
+
+			// Category routes
+			categories := public.Group("/categories")
+			{
+				categories.GET("", categoryHandler.ListCategories)
+				categories.POST("", categoryHandler.CreateCategory)
+				categories.GET("/:id", categoryHandler.GetCategory)
+				categories.PUT("/:id", categoryHandler.UpdateCategory)
+				categories.DELETE("/:id", categoryHandler.DeleteCategory)
+				categories.POST("/seed", categoryHandler.SeedCategories)
+			}
+
+			// Blog routes
+			blog := public.Group("/blog")
+			{
+				blog.GET("", blogHandler.ListBlogPosts)
+				blog.GET("/:id", blogHandler.GetBlogPost)
+				blog.GET("/category/:category_id", blogHandler.GetBlogPostsByCategory)
+				blog.GET("/author/:author_id", blogHandler.GetBlogPostsByAuthor)
+			}
 		}
 	}
 
 	// Get port from environment or use default
-	port := os.Getenv("PORT")
+	port := cfg.Server.Port
 	if port == "" {
 		port = "8080"
 	}

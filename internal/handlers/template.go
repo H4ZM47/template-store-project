@@ -10,21 +10,70 @@ import (
 )
 
 type TemplateHandler struct {
-	templateService *services.TemplateService
+	templateService services.TemplateService
+	storageService  services.StorageService
 }
 
-func NewTemplateHandler(templateService *services.TemplateService) *TemplateHandler {
+func NewTemplateHandler(templateService services.TemplateService, storageService services.StorageService) *TemplateHandler {
 	return &TemplateHandler{
 		templateService: templateService,
+		storageService:  storageService,
 	}
 }
 
 // CreateTemplate handles POST /api/v1/templates
 func (h *TemplateHandler) CreateTemplate(c *gin.Context) {
-	var template models.Template
-	if err := c.ShouldBindJSON(&template); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+	// Parse multipart form
+	if err := c.Request.ParseMultipartForm(10 << 20); err != nil { // 10 MB
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Error parsing form"})
 		return
+	}
+
+	// Get form values
+	name := c.Request.FormValue("name")
+	priceStr := c.Request.FormValue("price")
+	categoryIDStr := c.Request.FormValue("category_id")
+	previewData := c.Request.FormValue("preview_data")
+
+	if name == "" || priceStr == "" || categoryIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing required fields: name, price, category_id"})
+		return
+	}
+
+	price, err := strconv.ParseFloat(priceStr, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid price format"})
+		return
+	}
+
+	categoryID, err := strconv.ParseUint(categoryIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid category_id format"})
+		return
+	}
+
+	// Get file from form
+	file, fileHeader, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "File is required"})
+		return
+	}
+	defer file.Close()
+
+	// Upload file to S3
+	fileURL, err := h.storageService.UploadFile(c.Request.Context(), fileHeader)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload file"})
+		return
+	}
+
+	// Create template model
+	template := models.Template{
+		Name:        name,
+		Price:       price,
+		CategoryID:  uint(categoryID),
+		FileInfo:    fileURL,
+		PreviewData: previewData,
 	}
 
 	if err := h.templateService.CreateTemplate(&template); err != nil {

@@ -32,11 +32,12 @@ type DatabaseConfig struct {
 
 // AWSConfig holds AWS-related configuration
 type AWSConfig struct {
-	Region          string
-	AccessKeyID     string
-	SecretAccessKey string
-	S3Bucket        string
-	CognitoPoolID   string
+	Region             string
+	AccessKeyID        string
+	SecretAccessKey    string
+	S3Bucket           string
+	CognitoPoolID      string
+	CognitoAppClientID string
 }
 
 // StripeConfig holds Stripe-related configuration
@@ -68,11 +69,12 @@ func Load() *Config {
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
 		},
 		AWS: AWSConfig{
-			Region:          getEnv("AWS_REGION", "us-east-1"),
-			AccessKeyID:     getEnv("AWS_ACCESS_KEY_ID", ""),
-			SecretAccessKey: getEnv("AWS_SECRET_ACCESS_KEY", ""),
-			S3Bucket:        getEnv("AWS_S3_BUCKET", ""),
-			CognitoPoolID:   getEnv("AWS_COGNITO_POOL_ID", ""),
+			Region:             getEnv("AWS_REGION", "us-east-1"),
+			AccessKeyID:        getEnv("AWS_ACCESS_KEY_ID", ""),
+			SecretAccessKey:    getEnv("AWS_SECRET_ACCESS_KEY", ""),
+			S3Bucket:           getEnv("AWS_S3_BUCKET", ""),
+			CognitoPoolID:      getEnv("AWS_COGNITO_POOL_ID", ""),
+			CognitoAppClientID: getEnv("AWS_COGNITO_APP_CLIENT_ID", ""),
 		},
 		Stripe: StripeConfig{
 			SecretKey:      getEnv("STRIPE_SECRET_KEY", ""),
