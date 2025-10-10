@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=400, height=300">
+    <title>Data Classification Standard - Thumbnail</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            width: 400px;
+            height: 300px;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: white;
+        }
+        .thumbnail {
+            width: 400px;
+            height: 300px;
+            padding: 20px;
+            box-sizing: border-box;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            position: relative;
+        }
+        .document-preview {
+            background: white;
+            padding: 15px;
+            height: 100%;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .doc-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1a1a1a;
+            border-bottom: 2px solid #3B82F6;
+            padding-bottom: 8px;
+            margin-bottom: 12px;
+        }
+        .doc-section {
+            font-size: 11px;
+            font-weight: 600;
+            color: #2c2c2c;
+            margin-top: 10px;
+            margin-bottom: 6px;
+            border-bottom: 1px solid #e5e7eb;
+            padding-bottom: 3px;
+        }
+        .doc-text {
+            font-size: 8px;
+            color: #4b5563;
+            line-height: 1.4;
+            margin-bottom: 6px;
+        }
+        .doc-list {
+            font-size: 7px;
+            color: #6b7280;
+            line-height: 1.3;
+            padding-left: 12px;
+        }
+        .doc-list li {
+            margin-bottom: 2px;
+        }
+        .badge {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            background: #3B82F6;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 9px;
+            font-weight: 600;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="thumbnail">
+        <div class="badge">Compliance</div>
+        <div class="document-preview">
+            <div class="doc-title">Data Classification Standard</div>
+
+            <div class="doc-section">Introduction</div>
+            <div class="doc-text">
+                This Data Classification Standards Document sets forth the standards and protocols for data handling and classification.
+            </div>
+
+            <div class="doc-section">Objectives</div>
+            <div class="doc-list">
+                <ul>
+                    <li>Protect sensitive information from unauthorized access</li>
+                    <li>Comply with regulatory requirements (GDPR, CCPA)</li>
+                    <li>Ensure team members understand data protection roles</li>
+                    <li>Set clear guidelines for data storage and transmission</li>
+                </ul>
+            </div>
+
+            <div class="doc-section">Data Classification Categories</div>
+            <div class="doc-list">
+                <ul>
+                    <li>Company Confidential</li>
+                    <li>Company Financial</li>
+                    <li>Personally Identifiable Information</li>
+                    <li>Criminal Justice Information</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

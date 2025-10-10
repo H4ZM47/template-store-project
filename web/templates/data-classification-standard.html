@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Classification Standard</title>
+    <style>
+        @media screen {
+            body {
+                background: #f5f5f5;
+                margin: 0;
+                padding: 20px;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            }
+            .page-container {
+                max-width: 8.5in;
+                margin: 0 auto;
+                background: white;
+                box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            }
+        }
+
+        @media print {
+            body {
+                margin: 0;
+                padding: 0;
+            }
+            .page-container {
+                box-shadow: none;
+            }
+        }
+
+        .page-container {
+            padding: 0.5in;
+            line-height: 1.6;
+            color: #333;
+        }
+
+        h1 {
+            font-size: 24pt;
+            font-weight: 700;
+            margin-top: 0;
+            margin-bottom: 0.5em;
+            color: #1a1a1a;
+            border-bottom: 2px solid #333;
+            padding-bottom: 0.3em;
+        }
+
+        h2 {
+            font-size: 18pt;
+            font-weight: 600;
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+            color: #2c2c2c;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 0.2em;
+        }
+
+        h3 {
+            font-size: 14pt;
+            font-weight: 600;
+            margin-top: 1em;
+            margin-bottom: 0.5em;
+            color: #3c3c3c;
+        }
+
+        p {
+            font-size: 11pt;
+            margin-bottom: 0.8em;
+            text-align: justify;
+        }
+
+        ul, ol {
+            font-size: 11pt;
+            margin-bottom: 1em;
+            padding-left: 1.5em;
+        }
+
+        li {
+            margin-bottom: 0.4em;
+        }
+
+        strong {
+            font-weight: 600;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 2em;
+        }
+
+        .document-title {
+            font-size: 28pt;
+            font-weight: 700;
+            margin-bottom: 0.3em;
+            color: #1a1a1a;
+        }
+
+        .section {
+            margin-bottom: 1.5em;
+        }
+
+        @page {
+            size: letter;
+            margin: 0.5in;
+        }
+    </style>
+</head>
+<body>
+    <div class="page-container">
+        <div class="header">
+            <div class="document-title">Data Classification Standard</div>
+            <p style="text-align: center; font-size: 10pt; color: #666; margin-top: 0.5em;">
+                <strong>{{COMPANY_NAME}}</strong><br>
+                Version {{VERSION}} | Effective Date: {{EFFECTIVE_DATE}}<br>
+                Approved by: {{APPROVED_BY}}
+            </p>
+        </div>
+
+        <div class="section">
+            <h2>Introduction</h2>
+            <p>This Data Classification Standards Document aims to set forth the standards and protocols for data handling and classification for {{COMPANY_NAME}}. The document outlines the roles and responsibilities of each department, data classification categories, labeling, and storage/transmission requirements.</p>
+        </div>
+
+        <div class="section">
+            <h2>Objectives</h2>
+            <ol>
+                <li>To protect sensitive information from unauthorized access and data breaches.</li>
+                <li>To comply with regulatory requirements, including GDPR, CCPA, and other industry standards.</li>
+                <li>To ensure all team members understand their roles in data protection.</li>
+                <li>To set clear guidelines for data storage, transmission, and handling.</li>
+            </ol>
+        </div>
+
+        <div class="section">
+            <h2>Scope</h2>
+            <p>This document applies to all employees, contractors, and third parties who have access to, or are responsible for, the company's data assets.</p>
+        </div>
+
+        <div class="section">
+            <h2>Definitions</h2>
+            <ul>
+                <li><strong>Data</strong>: Information that is collected, used, or stored digitally.</li>
+                <li><strong>Classification</strong>: The process of categorizing data based on its sensitivity level.</li>
+                <li><strong>Data Owner</strong>: The person responsible for the data's creation, development, and integrity.</li>
+                <li><strong>Data Custodian</strong>: The person responsible for the safe storage, retrieval, and maintenance of the data.</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>Roles and Responsibilities</h2>
+
+            <h3>Executive</h3>
+            <ul>
+                <li>Approve and enforce data classification policies.</li>
+                <li>Allocate resources for data classification and security.</li>
+            </ul>
+
+            <h3>Engineering</h3>
+            <ul>
+                <li>Implement security features that protect classified data.</li>
+                <li>Regularly update the SaaS application to comply with the latest security standards.</li>
+            </ul>
+
+            <h3>Product</h3>
+            <ul>
+                <li>Ensure that data classification is part of the product development lifecycle.</li>
+                <li>Work with Engineering to prioritize security features.</li>
+            </ul>
+
+            <h3>Sales</h3>
+            <ul>
+                <li>Responsible for securing customer data during the sales process.</li>
+                <li>Ensure that no sensitive data is shared without proper classification and approval.</li>
+            </ul>
+
+            <h3>Customer Success</h3>
+            <ul>
+                <li>Handle customer data according to its classification.</li>
+                <li>Communicate security features and policies to customers.</li>
+            </ul>
+
+            <h3>Marketing</h3>
+            <ul>
+                <li>Ensure any customer data used for marketing purposes is properly classified and protected.</li>
+                <li>Comply with privacy regulations when gathering user data.</li>
+            </ul>
+
+            <h3>Finance</h3>
+            <ul>
+                <li>Responsible for classifying and securing all financial records.</li>
+                <li>Ensure that financial data is only accessible to authorized individuals.</li>
+            </ul>
+
+            <h3>HR</h3>
+            <ul>
+                <li>Keep all employee records and sensitive personal information secure.</li>
+                <li>Ensure new employees are trained on data classification and security.</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>Data Classification Categories</h2>
+
+            <h3>Company Confidential</h3>
+            <ul>
+                <li>Trade secrets, product roadmaps, and proprietary algorithms.</li>
+                <li>Access restricted to authorized personnel only.</li>
+            </ul>
+
+            <h3>Company Financial</h3>
+            <ul>
+                <li>Quarterly reports, investor relations communications, and internal financial data.</li>
+                <li>Access restricted to Finance and Executive teams.</li>
+            </ul>
+
+            <h3>Company Public</h3>
+            <ul>
+                <li>Publicly available information such as product descriptions, blog posts, and press releases.</li>
+            </ul>
+
+            <h3>Personally Identifiable Information</h3>
+            <ul>
+                <li>Customer and employee data that could be used to identify an individual.</li>
+                <li>Protected under various legal frameworks.</li>
+            </ul>
+
+            <h3>Criminal Justice Information</h3>
+            <ul>
+                <li>Data related to legal matters or proceedings.</li>
+                <li>Highly restricted and must comply with legal standards for storage and sharing.</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>Classification Process</h2>
+            <ol>
+                <li>Data Identification</li>
+                <li>Data Categorization</li>
+                <li>Data Labeling</li>
+                <li>Data Handling and Storage</li>
+            </ol>
+        </div>
+
+        <div class="section">
+            <h2>Data Labeling</h2>
+            <p>All data should be labeled according to its classification and handled accordingly.</p>
+        </div>
+
+        <div class="section">
+            <h2>Storage and Transmission Requirements</h2>
+            <ul>
+                <li><strong>Company Confidential and Financial Data</strong>: Stored in encrypted databases, transmitted over secure channels.</li>
+                <li><strong>PII and Criminal Justice Information</strong>: Stored in compliance with legal requirements, including encryption and multi-factor authentication.</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>Training and Awareness</h2>
+            <ul>
+                <li>All employees must undergo data classification upon hire and annually thereafter.</li>
+                <li>Data classification training will be incorporated into the overall security training program.</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>Policy Violations</h2>
+            <p>Violations of this policy can result in disciplinary action, up to and including termination.</p>
+        </div>
+
+        <div class="section">
+            <h2>Compliance and Auditing</h2>
+            <p>Internal and external audits will be conducted periodically to ensure compliance with this policy.</p>
+        </div>
+
+        <div class="section">
+            <h2>Continuous Improvement</h2>
+            <p>This policy will be reviewed at least annually or as needed to adapt to new regulatory or business requirements.</p>
+            <p style="margin-top: 2em; font-size: 9pt; color: #666;">
+                <strong>Next Review Date:</strong> {{REVIEW_DATE}}
+            </p>
+        </div>
+    </div>
+</body>
+</html>

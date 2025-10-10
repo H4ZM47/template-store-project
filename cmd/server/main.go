@@ -11,6 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"template-store/internal/handlers"
+	"template-store/internal/middleware"
 	"template-store/internal/models"
 	"template-store/internal/services"
 )
@@ -53,12 +54,37 @@ func main() {
 	categoryService := services.NewCategoryService(db)
 	blogService := services.NewBlogService(db)
 	userService := services.NewUserService(db)
+	orderService := services.NewOrderService(db)
+
+	// Initialize JWT service
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		jwtSecret = "your-secret-key-change-this-in-production"
+		logger.Warn("JWT_SECRET not set, using default (unsafe for production)")
+	}
+	jwtIssuer := os.Getenv("JWT_ISSUER")
+	if jwtIssuer == "" {
+		jwtIssuer = "template-store"
+	}
+	jwtService := services.NewJWTService(jwtSecret, jwtIssuer, 24) // 24 hours
+
+	// Initialize auth service
+	authService := services.NewAuthService(db, jwtService)
+
+	// Initialize Stripe service
+	stripeAPIKey := os.Getenv("STRIPE_API_KEY")
+	stripeWebhookSecret := os.Getenv("STRIPE_WEBHOOK_SECRET")
+	stripeSuccessURL := os.Getenv("STRIPE_SUCCESS_URL")
+	stripeCancelURL := os.Getenv("STRIPE_CANCEL_URL")
+	stripeService := services.NewStripeService(stripeAPIKey, stripeWebhookSecret, stripeSuccessURL, stripeCancelURL)
 
 	// Initialize handlers
+	authHandler := handlers.NewAuthHandler(authService)
 	templateHandler := handlers.NewTemplateHandler(templateService)
 	categoryHandler := handlers.NewCategoryHandler(categoryService)
 	blogHandler := handlers.NewBlogHandler(blogService)
 	userHandler := handlers.NewUserHandler(userService)
+	paymentHandler := handlers.NewPaymentHandler(stripeService, orderService, templateService, userService)
 
 	// Health check endpoint
 	r.GET("/health", func(c *gin.Context) {
@@ -78,8 +104,29 @@ func main() {
 			})
 		})
 
-		// User routes
+		// Public auth routes
+		auth := api.Group("/auth")
+		{
+			auth.POST("/register", authHandler.Register)
+			auth.POST("/login", authHandler.Login)
+			auth.POST("/refresh", authHandler.RefreshToken)
+			auth.POST("/password/reset-request", authHandler.RequestPasswordReset)
+			auth.POST("/password/reset", authHandler.ResetPassword)
+		}
+
+		// Protected auth routes (require authentication)
+		authProtected := api.Group("/auth")
+		authProtected.Use(middleware.AuthMiddleware(jwtService))
+		{
+			authProtected.GET("/profile", authHandler.GetProfile)
+			authProtected.POST("/password/change", authHandler.ChangePassword)
+			authProtected.POST("/logout", authHandler.Logout)
+		}
+
+		// User routes (admin only for management)
 		users := api.Group("/users")
+		users.Use(middleware.AuthMiddleware(jwtService))
+		users.Use(middleware.AdminMiddleware())
 		{
 			users.GET("", userHandler.ListUsers)
 			users.POST("", userHandler.CreateUser)
@@ -87,40 +134,102 @@ func main() {
 			users.POST("/seed", userHandler.SeedUsers)
 		}
 
-		// Template routes
+		// Template routes (public read, protected write)
 		templates := api.Group("/templates")
 		{
+			// Public routes
 			templates.GET("", templateHandler.ListTemplates)
-			templates.POST("", templateHandler.CreateTemplate)
 			templates.GET("/:id", templateHandler.GetTemplate)
-			templates.PUT("/:id", templateHandler.UpdateTemplate)
-			templates.DELETE("/:id", templateHandler.DeleteTemplate)
+			templates.GET("/:id/view", templateHandler.ViewTemplate)
+			templates.GET("/:id/thumbnail", templateHandler.GetTemplateThumbnail)
+			templates.GET("/:id/variables", templateHandler.GetTemplateVariables)
 			templates.GET("/category/:category_id", templateHandler.GetTemplatesByCategory)
+
+			// Protected routes (authenticated users)
+			templatesAuth := templates.Group("")
+			templatesAuth.Use(middleware.AuthMiddleware(jwtService))
+			{
+				templatesAuth.POST("/:id/generate", templateHandler.GenerateCustomPDF)
+				templatesAuth.GET("/:id/download", templateHandler.DownloadTemplatePDF)
+			}
+
+			// Admin only routes
+			templatesAdmin := templates.Group("")
+			templatesAdmin.Use(middleware.AuthMiddleware(jwtService))
+			templatesAdmin.Use(middleware.AdminMiddleware())
+			{
+				templatesAdmin.POST("", templateHandler.CreateTemplate)
+				templatesAdmin.PUT("/:id", templateHandler.UpdateTemplate)
+				templatesAdmin.DELETE("/:id", templateHandler.DeleteTemplate)
+			}
 		}
 
-		// Category routes
+		// Category routes (public read, admin write)
 		categories := api.Group("/categories")
 		{
+			// Public routes
 			categories.GET("", categoryHandler.ListCategories)
-			categories.POST("", categoryHandler.CreateCategory)
 			categories.GET("/:id", categoryHandler.GetCategory)
-			categories.PUT("/:id", categoryHandler.UpdateCategory)
-			categories.DELETE("/:id", categoryHandler.DeleteCategory)
-			categories.POST("/seed", categoryHandler.SeedCategories)
+
+			// Admin only routes
+			categoriesAdmin := categories.Group("")
+			categoriesAdmin.Use(middleware.AuthMiddleware(jwtService))
+			categoriesAdmin.Use(middleware.AdminMiddleware())
+			{
+				categoriesAdmin.POST("", categoryHandler.CreateCategory)
+				categoriesAdmin.PUT("/:id", categoryHandler.UpdateCategory)
+				categoriesAdmin.DELETE("/:id", categoryHandler.DeleteCategory)
+				categoriesAdmin.POST("/seed", categoryHandler.SeedCategories)
+			}
 		}
 
-		// Blog routes
+		// Blog routes (public read, admin write)
 		blog := api.Group("/blog")
 		{
+			// Public routes
 			blog.GET("", blogHandler.ListBlogPosts)
-			blog.POST("", blogHandler.CreateBlogPost)
 			blog.GET("/:id", blogHandler.GetBlogPost)
-			blog.PUT("/:id", blogHandler.UpdateBlogPost)
-			blog.DELETE("/:id", blogHandler.DeleteBlogPost)
 			blog.GET("/category/:category_id", blogHandler.GetBlogPostsByCategory)
 			blog.GET("/author/:author_id", blogHandler.GetBlogPostsByAuthor)
+
+			// Admin only routes
+			blogAdmin := blog.Group("")
+			blogAdmin.Use(middleware.AuthMiddleware(jwtService))
+			blogAdmin.Use(middleware.AdminMiddleware())
+			{
+				blogAdmin.POST("", blogHandler.CreateBlogPost)
+				blogAdmin.PUT("/:id", blogHandler.UpdateBlogPost)
+				blogAdmin.DELETE("/:id", blogHandler.DeleteBlogPost)
+			}
+		}
+
+		// Payment routes (authenticated users only)
+		payment := api.Group("/payment")
+		payment.Use(middleware.AuthMiddleware(jwtService))
+		{
+			payment.POST("/checkout", paymentHandler.CreateCheckoutSession)
+			payment.POST("/intent", paymentHandler.CreatePaymentIntent)
+			payment.GET("/success", paymentHandler.GetCheckoutSessionSuccess)
+		}
+
+		// Order routes (authenticated users for own orders, admin for all)
+		orders := api.Group("/orders")
+		orders.Use(middleware.AuthMiddleware(jwtService))
+		{
+			orders.GET("/user/:user_id", paymentHandler.GetUserOrders) // Users can view their own
+			orders.GET("/:id", paymentHandler.GetOrderByID)
+
+			// Admin only
+			ordersAdmin := orders.Group("")
+			ordersAdmin.Use(middleware.AdminMiddleware())
+			{
+				ordersAdmin.GET("", paymentHandler.GetAllOrders)
+			}
 		}
 	}
+
+	// Webhook endpoint (outside of API group, no middleware)
+	r.POST("/webhook/stripe", paymentHandler.HandleWebhook)
 
 	// Get port from environment or use default
 	port := os.Getenv("PORT")

@@ -216,8 +216,23 @@ a, button, input, select, textarea {
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
     }
-    
+
     html {
         scroll-behavior: auto;
     }
+}
+
+/* Stripe Buy Button Styling */
+.stripe-button-wrapper {
+    width: 100%;
+    display: block;
+}
+
+stripe-buy-button {
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    display: block !important;
+    height: 48px;
+    box-sizing: border-box !important;
 }
