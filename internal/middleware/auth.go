@@ -3,113 +3,53 @@ package middleware
 import (
 	"net/http"
 	"strings"
-	"template-store/internal/services"
 
 	"github.com/gin-gonic/gin"
+	cognitojwt "github.com/jhosan7/cognito-jwt-verify"
+	"template-store/internal/config"
 )
 
-// AuthMiddleware creates an authentication middleware
-func AuthMiddleware(jwtService *services.JWTService) gin.HandlerFunc {
+// AuthMiddleware creates a Gin middleware for JWT authentication.
+func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
+	// Initialize the Cognito JWT validator
+	cognitoConfig := cognitojwt.Config{
+		UserPoolId: cfg.AWS.CognitoPoolID,
+		ClientId:   cfg.AWS.CognitoAppClientID,
+		TokenUse:   "access", // Can be "id" or "access"
+	}
+
+	validator, err := cognitojwt.Create(cognitoConfig)
+	if err != nil {
+		// This would be a configuration error, so it's okay to panic at startup
+		panic("Failed to initialize Cognito JWT validator: " + err.Error())
+	}
+
 	return func(c *gin.Context) {
-		// Get token from Authorization header
+		// Get token from the Authorization header
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing authorization header"})
-			c.Abort()
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authorization header is missing"})
 			return
 		}
 
-		// Extract token (format: "Bearer <token>")
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		if tokenString == authHeader {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization header format"})
-			c.Abort()
+		// The token is expected to be in the format "Bearer <token>"
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid Authorization header format"})
 			return
 		}
+		token := parts[1]
 
-		// Validate token
-		claims, err := jwtService.ValidateToken(tokenString)
+		// Verify the token
+		claims, err := validator.Verify(token)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
-			c.Abort()
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token: " + err.Error()})
 			return
 		}
 
-		// Set user info in context
-		c.Set("user_id", claims.UserID)
-		c.Set("user_email", claims.Email)
-		c.Set("user_name", claims.Name)
-		c.Set("user_role", claims.Role)
+		// Set the user claims in the context for downstream handlers
+		c.Set("user_claims", claims)
 
 		c.Next()
 	}
-}
-
-// OptionalAuthMiddleware adds user info if token is present, but doesn't require it
-func OptionalAuthMiddleware(jwtService *services.JWTService) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// Get token from Authorization header
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.Next()
-			return
-		}
-
-		// Extract token
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		if tokenString == authHeader {
-			c.Next()
-			return
-		}
-
-		// Validate token
-		claims, err := jwtService.ValidateToken(tokenString)
-		if err != nil {
-			c.Next()
-			return
-		}
-
-		// Set user info in context
-		c.Set("user_id", claims.UserID)
-		c.Set("user_email", claims.Email)
-		c.Set("user_name", claims.Name)
-		c.Set("user_role", claims.Role)
-
-		c.Next()
-	}
-}
-
-// RoleMiddleware checks if user has required role
-func RoleMiddleware(requiredRoles ...string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// Get user role from context (must be called after AuthMiddleware)
-		userRole, exists := c.Get("user_role")
-		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-			c.Abort()
-			return
-		}
-
-		// Check if user has required role
-		hasRole := false
-		for _, role := range requiredRoles {
-			if userRole.(string) == role {
-				hasRole = true
-				break
-			}
-		}
-
-		if !hasRole {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
-			c.Abort()
-			return
-		}
-
-		c.Next()
-	}
-}
-
-// AdminMiddleware checks if user is an admin
-func AdminMiddleware() gin.HandlerFunc {
-	return RoleMiddleware("admin")
 }

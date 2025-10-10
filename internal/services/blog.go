@@ -161,4 +161,50 @@ func (s *BlogService) stripMarkdown(content string) string {
 	content = strings.Join(strings.Fields(content), " ")
 	
 	return content
-} 
+}
+
+// SeedBlogPosts seeds the database with initial blog posts
+func (s *BlogService) SeedBlogPosts() error {
+	posts := []models.BlogPost{
+		{
+			Title:      "The Future of Web Design",
+			Content:    "In this post, we explore the latest trends in web design, including AI, VR, and minimalist aesthetics.",
+			AuthorID:   3,
+			CategoryID: 1,
+		},
+		{
+			Title:      "How to Create Effective Email Campaigns",
+			Content:    "Learn the secrets to crafting email templates that convert. We cover everything from subject lines to CTAs.",
+			AuthorID:   3,
+			CategoryID: 2,
+		},
+		{
+			Title:      "Mastering Social Media Graphics",
+			Content:    "Discover how to create stunning graphics for your social media channels. Includes tips for Instagram, Facebook, and Twitter.",
+			AuthorID:   3,
+			CategoryID: 3,
+		},
+		{
+			Title:      "Why Your Business Needs a Professional Website",
+			Content:    "A deep dive into the importance of having a professional online presence and how it can impact your business.",
+			AuthorID:   2,
+			CategoryID: 1,
+		},
+		{
+			Title:      "10 Tips for a High-Converting Landing Page",
+			Content:    "Boost your conversions with these 10 essential tips for creating an effective landing page.",
+			AuthorID:   1,
+			CategoryID: 6,
+		},
+	}
+
+	for _, post := range posts {
+		if err := s.db.Create(&post).Error; err != nil {
+			if !errors.Is(err, gorm.ErrDuplicatedKey) {
+				return err
+			}
+		}
+	}
+
+	return nil
+}

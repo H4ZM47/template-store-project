@@ -9,7 +9,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 
+	"template-store/internal/config"
 	"template-store/internal/handlers"
 	"template-store/internal/middleware"
 	"template-store/internal/models"
@@ -17,10 +19,20 @@ import (
 )
 
 func main() {
-	// Load environment variables
-	if err := godotenv.Load(); err != nil {
+	// Declare all variables that will be initialized with a potential error.
+	var db *gorm.DB
+	var authService services.AuthService
+	var storageService services.StorageService
+	var paymentService services.PaymentService
+	var err error
+
+	// Load environment variables from .env file
+	if err = godotenv.Load(); err != nil {
 		log.Println("No .env file found, using system environment variables")
 	}
+
+	// Load configuration
+	cfg := config.Load()
 
 	// Set up logging
 	logger := logrus.New()
@@ -28,9 +40,7 @@ func main() {
 	logger.SetOutput(os.Stdout)
 
 	// Set Gin mode
-	if os.Getenv("GIN_MODE") == "" {
-		gin.SetMode(gin.ReleaseMode)
-	}
+	gin.SetMode(cfg.Server.Mode)
 
 	// Initialize router
 	r := gin.New()
@@ -40,51 +50,47 @@ func main() {
 	r.Use(cors.Default())
 
 	// Connect to the database
-	db, err := services.ConnectDB()
+	db, err = services.ConnectDB()
 	if err != nil {
 		logger.Fatalf("Failed to connect to database: %v", err)
 	}
-	// Auto-migrate User model
-	if err := models.AutoMigrate(db); err != nil {
+	// Auto-migrate models
+	if err = models.AutoMigrate(db); err != nil {
 		logger.Fatalf("Failed to migrate database: %v", err)
 	}
 
 	// Initialize services
+	if gin.Mode() == gin.DebugMode {
+		authService, err = services.NewMockAuthService(cfg)
+	} else {
+		authService, err = services.NewAuthService(cfg)
+	}
+	if err != nil {
+		logger.Fatalf("Failed to initialize auth service: %v", err)
+	}
+
+	storageService, err = services.NewStorageService(cfg)
+	if err != nil {
+		logger.Fatalf("Failed to initialize storage service: %v", err)
+	}
+
+	paymentService, err = services.NewPaymentService(cfg)
+	if err != nil {
+		logger.Fatalf("Failed to initialize payment service: %v", err)
+	}
 	templateService := services.NewTemplateService(db)
 	categoryService := services.NewCategoryService(db)
 	blogService := services.NewBlogService(db)
 	userService := services.NewUserService(db)
 	orderService := services.NewOrderService(db)
 
-	// Initialize JWT service
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		jwtSecret = "your-secret-key-change-this-in-production"
-		logger.Warn("JWT_SECRET not set, using default (unsafe for production)")
-	}
-	jwtIssuer := os.Getenv("JWT_ISSUER")
-	if jwtIssuer == "" {
-		jwtIssuer = "template-store"
-	}
-	jwtService := services.NewJWTService(jwtSecret, jwtIssuer, 24) // 24 hours
-
-	// Initialize auth service
-	authService := services.NewAuthService(db, jwtService)
-
-	// Initialize Stripe service
-	stripeAPIKey := os.Getenv("STRIPE_API_KEY")
-	stripeWebhookSecret := os.Getenv("STRIPE_WEBHOOK_SECRET")
-	stripeSuccessURL := os.Getenv("STRIPE_SUCCESS_URL")
-	stripeCancelURL := os.Getenv("STRIPE_CANCEL_URL")
-	stripeService := services.NewStripeService(stripeAPIKey, stripeWebhookSecret, stripeSuccessURL, stripeCancelURL)
-
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(authService)
-	templateHandler := handlers.NewTemplateHandler(templateService)
+	templateHandler := handlers.NewTemplateHandler(templateService, storageService)
 	categoryHandler := handlers.NewCategoryHandler(categoryService)
 	blogHandler := handlers.NewBlogHandler(blogService)
 	userHandler := handlers.NewUserHandler(userService)
-	paymentHandler := handlers.NewPaymentHandler(stripeService, orderService, templateService, userService)
+	paymentHandler := handlers.NewPaymentHandler(paymentService, templateService, orderService, userService, cfg.Stripe.WebhookSecret)
 
 	// Health check endpoint
 	r.GET("/health", func(c *gin.Context) {
@@ -104,141 +110,108 @@ func main() {
 			})
 		})
 
-		// Public auth routes
+		// Auth routes
 		auth := api.Group("/auth")
 		{
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", authHandler.Login)
-			auth.POST("/refresh", authHandler.RefreshToken)
-			auth.POST("/password/reset-request", authHandler.RequestPasswordReset)
-			auth.POST("/password/reset", authHandler.ResetPassword)
 		}
 
-		// Protected auth routes (require authentication)
-		authProtected := api.Group("/auth")
-		authProtected.Use(middleware.AuthMiddleware(jwtService))
+		// Webhook routes
+		webhooks := api.Group("/webhooks")
 		{
-			authProtected.GET("/profile", authHandler.GetProfile)
-			authProtected.POST("/password/change", authHandler.ChangePassword)
-			authProtected.POST("/logout", authHandler.Logout)
+			webhooks.POST("/stripe", paymentHandler.StripeWebhook)
 		}
 
-		// User routes (admin only for management)
-		users := api.Group("/users")
-		users.Use(middleware.AuthMiddleware(jwtService))
-		users.Use(middleware.AdminMiddleware())
-		{
-			users.GET("", userHandler.ListUsers)
-			users.POST("", userHandler.CreateUser)
-			users.GET("/:id", userHandler.GetUser)
-			users.POST("/seed", userHandler.SeedUsers)
+		// Authenticated routes group
+		authenticated := api.Group("/")
+		if gin.Mode() != gin.DebugMode {
+			authenticated.Use(middleware.AuthMiddleware(cfg))
+		} else {
+			// In debug mode, use a dummy middleware that does nothing
+			authenticated.Use(func(c *gin.Context) {
+				c.Next()
+			})
 		}
-
-		// Template routes (public read, protected write)
-		templates := api.Group("/templates")
 		{
-			// Public routes
-			templates.GET("", templateHandler.ListTemplates)
-			templates.GET("/:id", templateHandler.GetTemplate)
-			templates.GET("/:id/view", templateHandler.ViewTemplate)
-			templates.GET("/:id/thumbnail", templateHandler.GetTemplateThumbnail)
-			templates.GET("/:id/variables", templateHandler.GetTemplateVariables)
-			templates.GET("/category/:category_id", templateHandler.GetTemplatesByCategory)
+			// Checkout route
+			authenticated.POST("/checkout", paymentHandler.CreateCheckoutSession)
 
-			// Protected routes (authenticated users)
-			templatesAuth := templates.Group("")
-			templatesAuth.Use(middleware.AuthMiddleware(jwtService))
+			// User routes
+			users := authenticated.Group("/users")
 			{
-				templatesAuth.POST("/:id/generate", templateHandler.GenerateCustomPDF)
-				templatesAuth.GET("/:id/download", templateHandler.DownloadTemplatePDF)
+				users.GET("", userHandler.ListUsers)
+				users.POST("", userHandler.CreateUser)
+				users.GET("/:id", userHandler.GetUser)
+				users.POST("/seed", userHandler.SeedUsers)
 			}
 
-			// Admin only routes
-			templatesAdmin := templates.Group("")
-			templatesAdmin.Use(middleware.AuthMiddleware(jwtService))
-			templatesAdmin.Use(middleware.AdminMiddleware())
+			// Template routes
+			templates := authenticated.Group("/templates")
 			{
-				templatesAdmin.POST("", templateHandler.CreateTemplate)
-				templatesAdmin.PUT("/:id", templateHandler.UpdateTemplate)
-				templatesAdmin.DELETE("/:id", templateHandler.DeleteTemplate)
+				templates.POST("", templateHandler.CreateTemplate)
+				templates.PUT("/:id", templateHandler.UpdateTemplate)
+				templates.DELETE("/:id", templateHandler.DeleteTemplate)
+			}
+
+			// Blog routes
+			blog := authenticated.Group("/blog")
+			{
+				blog.POST("", blogHandler.CreateBlogPost)
+				blog.PUT("/:id", blogHandler.UpdateBlogPost)
+				blog.DELETE("/:id", blogHandler.DeleteBlogPost)
 			}
 		}
 
-		// Category routes (public read, admin write)
-		categories := api.Group("/categories")
+		// Public routes
+		public := api.Group("/")
 		{
-			// Public routes
-			categories.GET("", categoryHandler.ListCategories)
-			categories.GET("/:id", categoryHandler.GetCategory)
-
-			// Admin only routes
-			categoriesAdmin := categories.Group("")
-			categoriesAdmin.Use(middleware.AuthMiddleware(jwtService))
-			categoriesAdmin.Use(middleware.AdminMiddleware())
+			// Payment routes
+			payments := public.Group("/payment")
 			{
-				categoriesAdmin.POST("", categoryHandler.CreateCategory)
-				categoriesAdmin.PUT("/:id", categoryHandler.UpdateCategory)
-				categoriesAdmin.DELETE("/:id", categoryHandler.DeleteCategory)
-				categoriesAdmin.POST("/seed", categoryHandler.SeedCategories)
+				payments.GET("/success", paymentHandler.PaymentSuccess)
+				payments.GET("/cancel", paymentHandler.PaymentCancel)
 			}
-		}
 
-		// Blog routes (public read, admin write)
-		blog := api.Group("/blog")
-		{
-			// Public routes
-			blog.GET("", blogHandler.ListBlogPosts)
-			blog.GET("/:id", blogHandler.GetBlogPost)
-			blog.GET("/category/:category_id", blogHandler.GetBlogPostsByCategory)
-			blog.GET("/author/:author_id", blogHandler.GetBlogPostsByAuthor)
-
-			// Admin only routes
-			blogAdmin := blog.Group("")
-			blogAdmin.Use(middleware.AuthMiddleware(jwtService))
-			blogAdmin.Use(middleware.AdminMiddleware())
+			// Template routes
+			templates := public.Group("/templates")
 			{
-				blogAdmin.POST("", blogHandler.CreateBlogPost)
-				blogAdmin.PUT("/:id", blogHandler.UpdateBlogPost)
-				blogAdmin.DELETE("/:id", blogHandler.DeleteBlogPost)
+				templates.GET("", templateHandler.ListTemplates)
+				templates.GET("/:id", templateHandler.GetTemplate)
+				templates.GET("/category/:category_id", templateHandler.GetTemplatesByCategory)
+				templates.POST("/seed", templateHandler.SeedTemplates)
 			}
-		}
 
-		// Payment routes (authenticated users only)
-		payment := api.Group("/payment")
-		payment.Use(middleware.AuthMiddleware(jwtService))
-		{
-			payment.POST("/checkout", paymentHandler.CreateCheckoutSession)
-			payment.POST("/intent", paymentHandler.CreatePaymentIntent)
-			payment.GET("/success", paymentHandler.GetCheckoutSessionSuccess)
-		}
-
-		// Order routes (authenticated users for own orders, admin for all)
-		orders := api.Group("/orders")
-		orders.Use(middleware.AuthMiddleware(jwtService))
-		{
-			orders.GET("/user/:user_id", paymentHandler.GetUserOrders) // Users can view their own
-			orders.GET("/:id", paymentHandler.GetOrderByID)
-
-			// Admin only
-			ordersAdmin := orders.Group("")
-			ordersAdmin.Use(middleware.AdminMiddleware())
+			// Category routes
+			categories := public.Group("/categories")
 			{
-				ordersAdmin.GET("", paymentHandler.GetAllOrders)
+				categories.GET("", categoryHandler.ListCategories)
+				categories.POST("", categoryHandler.CreateCategory)
+				categories.GET("/:id", categoryHandler.GetCategory)
+				categories.PUT("/:id", categoryHandler.UpdateCategory)
+				categories.DELETE("/:id", categoryHandler.DeleteCategory)
+				categories.POST("/seed", categoryHandler.SeedCategories)
+			}
+
+			// Blog routes
+			blog := public.Group("/blog")
+			{
+				blog.GET("", blogHandler.ListBlogPosts)
+				blog.GET("/:id", blogHandler.GetBlogPost)
+				blog.GET("/category/:category_id", blogHandler.GetBlogPostsByCategory)
+				blog.GET("/author/:author_id", blogHandler.GetBlogPostsByAuthor)
 			}
 		}
 	}
 
-	// Webhook endpoint (outside of API group, no middleware)
-	r.POST("/webhook/stripe", paymentHandler.HandleWebhook)
-
 	// Get port from environment or use default
-	port := os.Getenv("PORT")
+	port := cfg.Server.Port
 	if port == "" {
 		port = "8080"
 	}
 
 	logger.Infof("Starting server on port %s", port)
-	if err := r.Run(":" + port); err != nil {
+	if err = r.Run(":" + port); err != nil {
 		logger.Fatalf("Failed to start server: %v", err)
 	}
 }

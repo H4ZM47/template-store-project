@@ -1,406 +1,184 @@
 package handlers
 
 import (
-	"fmt"
-	"io"
+	"encoding/json"
+	"io/ioutil"
 	"net/http"
 	"strconv"
+	"template-store/internal/models"
 	"template-store/internal/services"
 
 	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
+	"github.com/stripe/stripe-go/v72"
+	"github.com/stripe/stripe-go/v72/webhook"
 )
 
-// PaymentHandler handles payment-related requests
+// PaymentHandler handles payment-related HTTP requests.
 type PaymentHandler struct {
-	stripeService   *services.StripeService
-	orderService    *services.OrderService
-	templateService *services.TemplateService
-	userService     *services.UserService
+	paymentService      services.PaymentService
+	templateService     services.TemplateService
+	orderService        services.OrderService
+	userService         services.UserService
+	stripeWebhookSecret string
 }
 
-// NewPaymentHandler creates a new payment handler
-func NewPaymentHandler(stripeService *services.StripeService, orderService *services.OrderService, templateService *services.TemplateService, userService *services.UserService) *PaymentHandler {
+// NewPaymentHandler creates a new PaymentHandler.
+func NewPaymentHandler(paymentService services.PaymentService, templateService services.TemplateService, orderService services.OrderService, userService services.UserService, stripeWebhookSecret string) *PaymentHandler {
 	return &PaymentHandler{
-		stripeService:   stripeService,
-		orderService:    orderService,
-		templateService: templateService,
-		userService:     userService,
+		paymentService:      paymentService,
+		templateService:     templateService,
+		orderService:        orderService,
+		userService:         userService,
+		stripeWebhookSecret: stripeWebhookSecret,
 	}
 }
 
-// CreateCheckoutSessionRequest represents the request to create a checkout session
-type CreateCheckoutSessionRequest struct {
-	TemplateID uint   `json:"template_id" binding:"required"`
-	UserID     uint   `json:"user_id" binding:"required"`
-	UserEmail  string `json:"user_email" binding:"required,email"`
+// CheckoutRequest defines the request body for creating a checkout session.
+type CheckoutRequest struct {
+	TemplateID uint `json:"template_id" binding:"required"`
 }
 
-// CreateCheckoutSession creates a Stripe checkout session
+// CreateCheckoutSession handles the creation of a payment intent for a template.
 func (h *PaymentHandler) CreateCheckoutSession(c *gin.Context) {
-	var req CreateCheckoutSessionRequest
+	var req CheckoutRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
-	// Get template details
+	// Get user ID from claims
+	claims, exists := c.Get("user_claims")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User claims not found"})
+		return
+	}
+
+	claimsMap, ok := claims.(map[string]interface{})
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not parse user claims"})
+		return
+	}
+
+	cognitoSub, ok := claimsMap["sub"].(string)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not get user ID from claims"})
+		return
+	}
+
+	// Get the template details to find the price
 	template, err := h.templateService.GetTemplate(req.TemplateID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Template not found"})
 		return
 	}
 
-	// Verify user exists
-	user, err := h.userService.GetUser(req.UserID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-		return
+	// Convert price to cents
+	amountInCents := int64(template.Price * 100)
+
+	// Prepare metadata
+	metadata := map[string]string{
+		"cognito_sub": cognitoSub,
+		"template_id": strconv.FormatUint(uint64(req.TemplateID), 10),
 	}
 
-	// Use user email from database if not provided
-	email := req.UserEmail
-	if email == "" {
-		email = user.Email
-	}
+	// Define success and cancel URLs
+	// In a real application, these would be dynamically generated
+	successURL := "http://localhost:8080/payment/success?session_id={CHECKOUT_SESSION_ID}"
+	cancelURL := "http://localhost:8080/payment/cancel"
 
-	// Create checkout session
-	session, err := h.stripeService.CreateCheckoutSession(
-		template.ID,
-		template.Name,
-		template.Price,
-		email,
-	)
+	// Create a checkout session with Stripe
+	session, err := h.paymentService.CreateCheckoutSession(amountInCents, "usd", metadata, successURL, cancelURL)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create checkout session"})
 		return
 	}
 
-	// Create pending order
-	order, err := h.orderService.CreateOrder(req.UserID, req.TemplateID, session.ID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create order"})
-		return
-	}
-
 	c.JSON(http.StatusOK, gin.H{
-		"session_id":  session.ID,
-		"session_url": session.URL,
-		"order_id":    order.ID,
+		"checkout_url": session.URL,
 	})
 }
 
-// CreatePaymentIntentRequest represents the request to create a payment intent
-type CreatePaymentIntentRequest struct {
-	TemplateID uint   `json:"template_id" binding:"required"`
-	UserID     uint   `json:"user_id" binding:"required"`
-	Currency   string `json:"currency"`
-}
+// StripeWebhook handles incoming webhooks from Stripe.
+func (h *PaymentHandler) StripeWebhook(c *gin.Context) {
+	const MaxBodyBytes = int64(65536)
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, MaxBodyBytes)
 
-// CreatePaymentIntent creates a Stripe payment intent for direct payments
-func (h *PaymentHandler) CreatePaymentIntent(c *gin.Context) {
-	var req CreatePaymentIntentRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Get template details
-	template, err := h.templateService.GetTemplate(req.TemplateID)
+	payload, err := ioutil.ReadAll(c.Request.Body)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Template not found"})
+		logrus.Errorf("Error reading webhook request body: %v", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Error reading request body"})
 		return
 	}
 
-	// Verify user exists
-	_, err = h.userService.GetUser(req.UserID)
+	// Verify the webhook signature
+	event, err := webhook.ConstructEvent(payload, c.GetHeader("Stripe-Signature"), h.stripeWebhookSecret)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-		return
-	}
-
-	// Default currency to USD
-	currency := req.Currency
-	if currency == "" {
-		currency = "usd"
-	}
-
-	// Create payment intent
-	metadata := map[string]string{
-		"template_id": fmt.Sprintf("%d", req.TemplateID),
-		"user_id":     fmt.Sprintf("%d", req.UserID),
-	}
-
-	pi, err := h.stripeService.CreatePaymentIntent(template.Price, currency, metadata)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create payment intent"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"client_secret": pi.ClientSecret,
-		"payment_intent_id": pi.ID,
-	})
-}
-
-// GetCheckoutSessionSuccess handles successful checkout redirects
-func (h *PaymentHandler) GetCheckoutSessionSuccess(c *gin.Context) {
-	sessionID := c.Query("session_id")
-	if sessionID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing session_id"})
-		return
-	}
-
-	// Get checkout session
-	session, err := h.stripeService.GetCheckoutSession(sessionID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve session"})
-		return
-	}
-
-	// Get order by session ID
-	order, err := h.orderService.GetOrderByStripeSession(sessionID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Order not found"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"message":        "Payment successful",
-		"session_status": session.PaymentStatus,
-		"order":          services.ToOrderResponse(order),
-	})
-}
-
-// HandleWebhook handles Stripe webhook events
-func (h *PaymentHandler) HandleWebhook(c *gin.Context) {
-	// Read the request body
-	payload, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
-		return
-	}
-
-	// Get the Stripe signature
-	signature := c.GetHeader("Stripe-Signature")
-	if signature == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing Stripe signature"})
-		return
-	}
-
-	// Verify webhook signature
-	event, err := h.stripeService.VerifyWebhookSignature(payload, signature)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid signature"})
+		logrus.Errorf("Webhook signature verification failed: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Webhook signature verification failed"})
 		return
 	}
 
 	// Handle the event
 	switch event.Type {
 	case "checkout.session.completed":
-		session := event.Data.Object
-		sessionID, _ := session["id"].(string)
-
-		// Handle successful checkout
-		if err := h.handleCheckoutSessionCompletedByID(sessionID); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process checkout"})
+		var session stripe.CheckoutSession
+		err := json.Unmarshal(event.Data.Raw, &session)
+		if err != nil {
+			logrus.Errorf("Error parsing webhook JSON: %v", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Error parsing webhook JSON"})
 			return
 		}
 
-	case "payment_intent.succeeded":
-		pi := event.Data.Object
-		piID, _ := pi["id"].(string)
-		metadata, _ := pi["metadata"].(map[string]interface{})
-		amount, _ := pi["amount"].(float64)
-		status, _ := pi["status"].(string)
+		// Extract metadata
+		cognitoSub := session.Metadata["cognito_sub"]
+		templateIDStr := session.Metadata["template_id"]
 
-		// Handle successful payment intent
-		if err := h.handlePaymentIntentSucceededData(piID, metadata, amount, status); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process payment"})
+		// Find user by Cognito sub
+		user, err := h.userService.GetUserByCognitoSub(cognitoSub)
+		if err != nil {
+			logrus.Errorf("Webhook error: user with cognito_sub %s not found: %v", cognitoSub, err)
+			// Still return 200 to Stripe to acknowledge receipt of the event
+			c.Status(http.StatusOK)
 			return
 		}
 
-	case "payment_intent.payment_failed":
-		pi := event.Data.Object
-		piID, _ := pi["id"].(string)
-		metadata, _ := pi["metadata"].(map[string]interface{})
-
-		// Handle failed payment
-		if err := h.handlePaymentIntentFailedData(piID, metadata); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process payment failure"})
+		templateID, err := strconv.ParseUint(templateIDStr, 10, 32)
+		if err != nil {
+			logrus.Errorf("Webhook error: invalid template_id %s: %v", templateIDStr, err)
+			c.Status(http.StatusOK)
 			return
 		}
+
+		// Create the order
+		order := &models.Order{
+			UserID:         user.ID,
+			TemplateID:     uint(templateID),
+			PurchaseHistory: session.PaymentIntent.ID, // Store payment intent ID for reference
+			DeliveryStatus: "Completed",
+		}
+
+		if err := h.orderService.CreateOrder(order); err != nil {
+			logrus.Errorf("Webhook error: failed to create order: %v", err)
+			c.Status(http.StatusOK)
+			return
+		}
+
+		logrus.Infof("Successfully created order for user %d and template %d", user.ID, templateID)
 
 	default:
-		// Unhandled event type
-		c.JSON(http.StatusOK, gin.H{"message": "Event received but not handled"})
-		return
+		logrus.Warnf("Unhandled Stripe event type: %s", event.Type)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Webhook processed successfully"})
+	c.Status(http.StatusOK)
 }
 
-// handleCheckoutSessionCompletedByID processes completed checkout sessions
-func (h *PaymentHandler) handleCheckoutSessionCompletedByID(sessionID string) error {
-	// Get full session details
-	session, err := h.stripeService.GetCheckoutSession(sessionID)
-	if err != nil {
-		return fmt.Errorf("failed to get session: %w", err)
-	}
-
-	// Find order by session ID
-	order, err := h.orderService.GetOrderByStripeSession(session.ID)
-	if err != nil {
-		return fmt.Errorf("failed to find order: %w", err)
-	}
-
-	// Update order status to paid
-	paymentDetails := fmt.Sprintf("Stripe Session: %s | Payment Status: %s | Amount: $%.2f",
-		session.ID,
-		session.PaymentStatus,
-		float64(session.AmountTotal)/100,
-	)
-
-	if err := h.orderService.MarkOrderAsPaid(order.ID, paymentDetails); err != nil {
-		return fmt.Errorf("failed to mark order as paid: %w", err)
-	}
-
-	// TODO: Send delivery email with template download link
-	// TODO: Mark as delivered after successful email
-
-	return nil
+// PaymentSuccess handles the success response from stripe
+func (h *PaymentHandler) PaymentSuccess(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"message": "Payment successful!"})
 }
 
-// handlePaymentIntentSucceededData processes successful payment intents
-func (h *PaymentHandler) handlePaymentIntentSucceededData(piID string, metadata map[string]interface{}, amount float64, status string) error {
-	// Extract metadata
-	templateIDStr, ok := metadata["template_id"].(string)
-	if !ok {
-		return fmt.Errorf("missing template_id in metadata")
-	}
-	userIDStr, ok := metadata["user_id"].(string)
-	if !ok {
-		return fmt.Errorf("missing user_id in metadata")
-	}
-
-	templateID, _ := strconv.ParseUint(templateIDStr, 10, 32)
-	userID, _ := strconv.ParseUint(userIDStr, 10, 32)
-
-	// Create order
-	order, err := h.orderService.CreateOrder(uint(userID), uint(templateID), piID)
-	if err != nil {
-		return fmt.Errorf("failed to create order: %w", err)
-	}
-
-	// Mark as paid
-	paymentDetails := fmt.Sprintf("Stripe Payment Intent: %s | Status: %s | Amount: $%.2f",
-		piID,
-		status,
-		amount/100,
-	)
-
-	if err := h.orderService.MarkOrderAsPaid(order.ID, paymentDetails); err != nil {
-		return fmt.Errorf("failed to mark order as paid: %w", err)
-	}
-
-	return nil
-}
-
-// handlePaymentIntentFailedData processes failed payment intents
-func (h *PaymentHandler) handlePaymentIntentFailedData(piID string, metadata map[string]interface{}) error {
-	// Try to find existing order
-	templateIDStr, ok := metadata["template_id"].(string)
-	if !ok {
-		return nil // No order to update
-	}
-	userIDStr, ok := metadata["user_id"].(string)
-	if !ok {
-		return nil
-	}
-
-	templateID, _ := strconv.ParseUint(templateIDStr, 10, 32)
-	userID, _ := strconv.ParseUint(userIDStr, 10, 32)
-
-	// Create failed order record
-	order, err := h.orderService.CreateOrder(uint(userID), uint(templateID), piID)
-	if err != nil {
-		return fmt.Errorf("failed to create order record: %w", err)
-	}
-
-	// Mark as failed
-	reason := fmt.Sprintf("Payment failed: %s", piID)
-	if err := h.orderService.MarkOrderAsFailed(order.ID, reason); err != nil {
-		return fmt.Errorf("failed to mark order as failed: %w", err)
-	}
-
-	return nil
-}
-
-// GetOrderByID retrieves an order by ID
-func (h *PaymentHandler) GetOrderByID(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order ID"})
-		return
-	}
-
-	order, err := h.orderService.GetOrderByID(uint(id))
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Order not found"})
-		return
-	}
-
-	c.JSON(http.StatusOK, services.ToOrderResponse(order))
-}
-
-// GetUserOrders retrieves all orders for a user
-func (h *PaymentHandler) GetUserOrders(c *gin.Context) {
-	userIDStr := c.Param("user_id")
-	userID, err := strconv.ParseUint(userIDStr, 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
-		return
-	}
-
-	orders, err := h.orderService.GetOrdersByUserID(uint(userID))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get orders"})
-		return
-	}
-
-	// Convert to response format
-	responses := make([]services.OrderResponse, len(orders))
-	for i, order := range orders {
-		responses[i] = services.ToOrderResponse(&order)
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"orders": responses,
-		"count":  len(responses),
-	})
-}
-
-// GetAllOrders retrieves all orders with pagination
-func (h *PaymentHandler) GetAllOrders(c *gin.Context) {
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
-	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
-
-	orders, err := h.orderService.GetAllOrders(limit, offset)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get orders"})
-		return
-	}
-
-	// Convert to response format
-	responses := make([]services.OrderResponse, len(orders))
-	for i, order := range orders {
-		responses[i] = services.ToOrderResponse(&order)
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"orders": responses,
-		"count":  len(responses),
-		"limit":  limit,
-		"offset": offset,
-	})
+// PaymentCancel handles the cancel response from stripe
+func (h *PaymentHandler) PaymentCancel(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"message": "Payment canceled."})
 }

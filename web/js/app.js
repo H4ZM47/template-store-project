@@ -313,6 +313,49 @@ class TemplateStoreApp {
         }
     }
 
+    async purchaseTemplate(templateId) {
+        // NOTE: This assumes a JWT token is stored in localStorage after login.
+        // The current frontend does not have login/register functionality.
+        const token = localStorage.getItem('auth_token');
+        if (!token) {
+            this.showError('You must be logged in to purchase a template.');
+            // In a real app, you would redirect to a login page.
+            return;
+        }
+
+        try {
+            const response = await fetch(`${this.apiBase}/checkout`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ template_id: templateId })
+            });
+
+            if (response.status === 401) {
+                this.showError('Your session has expired. Please log in again.');
+                // In a real app, you would redirect to a login page.
+                return;
+            }
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to initiate purchase.');
+            }
+
+            const data = await response.json();
+            if (data.checkout_url) {
+                window.location.href = data.checkout_url;
+            } else {
+                throw new Error('Checkout URL not provided.');
+            }
+        } catch (error) {
+            console.error('Error purchasing template:', error);
+            this.showError(error.message);
+        }
+    }
+
     showTemplateModal(template) {
         const modal = document.getElementById('template-modal');
         const title = document.getElementById('modal-title');
