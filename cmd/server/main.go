@@ -177,6 +177,7 @@ func main() {
 			templates := public.Group("/templates")
 			{
 				templates.GET("", templateHandler.ListTemplates)
+				templates.GET("/:id/view", templateHandler.ViewTemplate)
 				templates.GET("/:id", templateHandler.GetTemplate)
 				templates.GET("/category/:category_id", templateHandler.GetTemplatesByCategory)
 				templates.POST("/seed", templateHandler.SeedTemplates)

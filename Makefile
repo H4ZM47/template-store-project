@@ -24,12 +24,24 @@ help: ## Show this help message
 	@echo "$(GREEN)Available targets:$(NC)"
 	@awk 'BEGIN {FS = ":.*##"; printf ""} /^[a-zA-Z_-]+:.*?##/ { printf "  $(BLUE)%-15s$(NC) %s\n", $$1, $$2 } /^##@/ { printf "\n$(YELLOW)%s$(NC)\n", substr($$0, 5) }' $(MAKEFILE_LIST)
 	@echo ""
-	@echo "$(GREEN)Quick Start:$(NC)"
-	@echo "  make start    # Start all services"
-	@echo "  make logs     # View logs"
-	@echo "  make stop     # Stop all services"
+	@echo "$(GREEN)Quick Start (Automated):$(NC)"
+	@echo "  make auto-start    # One-command automated startup (recommended)"
+	@echo ""
+	@echo "$(GREEN)Quick Start (Manual):$(NC)"
+	@echo "  make start         # Start all services"
+	@echo "  make logs          # View logs"
+	@echo "  make stop          # Stop all services"
 
 ##@ Development Environment
+
+startup-tool: ## Build the automated startup tool
+	@echo "$(BLUE)🔨 Building automated startup tool...$(NC)"
+	@go build -o startup cmd/startup/main.go
+	@echo "$(GREEN)✅ Startup tool built: ./startup$(NC)"
+
+auto-start: startup-tool ## Automated one-command startup (build, database, backend, frontend)
+	@echo "$(BLUE)🚀 Starting with automated tool...$(NC)"
+	@./startup
 
 start: ## Start all services (database, backend, frontend)
 	@echo "$(BLUE)🚀 Starting TemplateStore development environment...$(NC)"
@@ -68,6 +80,7 @@ db-setup: ## Create database and run migrations
 db-seed: ## Seed database with initial data
 	@echo "$(BLUE)🌱 Seeding database...$(NC)"
 	@curl -s -X POST http://localhost:$(BACKEND_PORT)/api/v1/categories/seed | jq . || echo "Categories seeded"
+	@curl -s -X POST http://localhost:$(BACKEND_PORT)/api/v1/templates/seed | jq . || echo "Templates seeded"
 	@curl -s -X POST http://localhost:$(BACKEND_PORT)/api/v1/users/seed | jq . || echo "Users seeded"
 	@echo "$(GREEN)✅ Database seeded$(NC)"
 

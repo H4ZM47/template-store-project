@@ -57,21 +57,14 @@ func (s *CategoryService) DeleteCategory(id uint) error {
 // SeedCategories seeds the database with initial categories
 func (s *CategoryService) SeedCategories() error {
 	categories := []models.Category{
-		{Name: "Web Design"},
-		{Name: "Email Templates"},
-		{Name: "Social Media"},
-		{Name: "Business Cards"},
-		{Name: "Presentations"},
-		{Name: "Landing Pages"},
-		{Name: "E-commerce"},
-		{Name: "Portfolio"},
+		{Name: "Security & Compliance"},
 	}
-	
+
 	for _, category := range categories {
 		if err := s.db.Create(&category).Error; err != nil {
 			return err
 		}
 	}
-	
+
 	return nil
 } 

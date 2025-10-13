@@ -217,3 +217,34 @@ func (h *TemplateHandler) SeedTemplates(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Templates seeded successfully"})
 }
+
+// ViewTemplate handles GET /api/v1/templates/:id/view
+func (h *TemplateHandler) ViewTemplate(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid template ID"})
+		return
+	}
+
+	template, err := h.templateService.GetTemplate(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Template not found"})
+		return
+	}
+
+	// Map template names to HTML files
+	templateFiles := map[string]string{
+		"Data Classification Standard":       "web/templates/data-classification-standard.html",
+		"Vulnerability Management Standard":  "web/templates/vulnerability-management-standard.html",
+	}
+
+	templateFile, exists := templateFiles[template.Name]
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Template file not found"})
+		return
+	}
+
+	// Serve the HTML file
+	c.File(templateFile)
+}
