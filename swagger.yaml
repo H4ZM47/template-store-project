@@ -1,0 +1,1686 @@
+openapi: 3.0.3
+info:
+  title: Template Store API - User Account Management
+  description: |
+    Complete API documentation for the Template Store user account management system.
+
+    ## Features
+    - User profile management
+    - Account preferences and settings
+    - Security and session management
+    - User dashboard with orders and templates
+    - Admin panel for user management
+    - Activity logging and audit trail
+
+    ## Authentication
+    Most endpoints require JWT Bearer token authentication via AWS Cognito.
+    Include the token in the Authorization header: `Bearer <token>`
+
+  version: 1.0.0
+  contact:
+    name: Template Store API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development server
+  - url: https://api.template-store.com/api/v1
+    description: Production server
+
+tags:
+  - name: Authentication
+    description: User authentication and registration
+  - name: Profile
+    description: User profile management
+  - name: Preferences
+    description: User preferences and settings
+  - name: Security
+    description: Password management and security
+  - name: Dashboard
+    description: User dashboard and statistics
+  - name: Sessions
+    description: Login history and session management
+  - name: Activity
+    description: Activity logging and audit trail
+  - name: Admin
+    description: Admin panel for user management
+  - name: Public
+    description: Public endpoints (no authentication required)
+
+security:
+  - BearerAuth: []
+
+paths:
+  # Authentication Endpoints
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user
+      description: Create a new user account with AWS Cognito
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+                - name
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  example: SecurePass123!
+                name:
+                  type: string
+                  example: John Doe
+      responses:
+        '200':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login user
+      description: Authenticate user with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                password:
+                  type: string
+                  format: password
+                  example: SecurePass123!
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/forgot-password:
+    post:
+      tags:
+        - Security
+      summary: Request password reset
+      description: Send password reset email to user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+      responses:
+        '200':
+          description: Password reset email sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Password reset email sent
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/reset-password:
+    post:
+      tags:
+        - Security
+      summary: Reset password with token
+      description: Reset user password using token from email
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+                - new_password
+              properties:
+                token:
+                  type: string
+                  example: abc123def456
+                new_password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  example: NewSecurePass123!
+      responses:
+        '200':
+          description: Password reset successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Password reset successful
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/verify-email:
+    post:
+      tags:
+        - Security
+      summary: Verify email address
+      description: Verify user email with token from verification email
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+              properties:
+                token:
+                  type: string
+                  example: xyz789abc123
+      responses:
+        '200':
+          description: Email verified successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Email verified successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/change-password:
+    post:
+      tags:
+        - Security
+      summary: Change password
+      description: Change user password (requires authentication)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - current_password
+                - new_password
+              properties:
+                current_password:
+                  type: string
+                  format: password
+                  example: OldPass123!
+                new_password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  example: NewPass123!
+      responses:
+        '200':
+          description: Password changed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Password changed successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/resend-verification:
+    post:
+      tags:
+        - Security
+      summary: Resend verification email
+      description: Resend email verification link
+      responses:
+        '200':
+          description: Verification email sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Verification email sent
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/logout-session/{id}:
+    post:
+      tags:
+        - Sessions
+      summary: Logout specific session
+      description: Logout a specific active session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Session ID
+      responses:
+        '200':
+          description: Session logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Session logged out successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/logout-all:
+    post:
+      tags:
+        - Sessions
+      summary: Logout all sessions
+      description: Logout all active sessions for the user
+      responses:
+        '200':
+          description: All sessions logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: All sessions logged out successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # Profile Endpoints
+  /profile:
+    get:
+      tags:
+        - Profile
+      summary: Get user profile
+      description: Get the authenticated user's profile
+      responses:
+        '200':
+          description: User profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags:
+        - Profile
+      summary: Update user profile
+      description: Update user profile information
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: John Doe
+                bio:
+                  type: string
+                  example: Software developer and template enthusiast
+                phone_number:
+                  type: string
+                  example: +1234567890
+                address_line1:
+                  type: string
+                  example: 123 Main St
+                address_line2:
+                  type: string
+                  example: Apt 4B
+                city:
+                  type: string
+                  example: New York
+                state:
+                  type: string
+                  example: NY
+                country:
+                  type: string
+                  example: USA
+                postal_code:
+                  type: string
+                  example: "10001"
+      responses:
+        '200':
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags:
+        - Profile
+      summary: Delete user account
+      description: Permanently delete user account (requires password confirmation)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - password
+                - confirmation
+              properties:
+                password:
+                  type: string
+                  format: password
+                confirmation:
+                  type: string
+                  example: DELETE
+      responses:
+        '200':
+          description: Account deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Account deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /profile/avatar:
+    post:
+      tags:
+        - Profile
+      summary: Upload avatar
+      description: Upload user avatar image
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - avatar
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+                  description: Image file (max 5MB, jpg/jpeg/png/webp)
+      responses:
+        '200':
+          description: Avatar uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  avatar_url:
+                    type: string
+                    example: https://cdn.example.com/avatars/user123.jpg
+                  message:
+                    type: string
+                    example: Avatar uploaded successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags:
+        - Profile
+      summary: Delete avatar
+      description: Remove user avatar image
+      responses:
+        '200':
+          description: Avatar deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Avatar deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /profile/preferences:
+    get:
+      tags:
+        - Preferences
+      summary: Get user preferences
+      description: Get user preferences and settings
+      responses:
+        '200':
+          description: Preferences retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPreferences'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags:
+        - Preferences
+      summary: Update user preferences
+      description: Update user preferences and settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserPreferences'
+      responses:
+        '200':
+          description: Preferences updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPreferences'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /profile/deactivate:
+    post:
+      tags:
+        - Profile
+      summary: Deactivate account
+      description: Deactivate user account (can be reactivated)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - password
+              properties:
+                password:
+                  type: string
+                  format: password
+                reason:
+                  type: string
+                  example: Taking a break
+      responses:
+        '200':
+          description: Account deactivated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Account deactivated successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # Dashboard Endpoints
+  /profile/dashboard:
+    get:
+      tags:
+        - Dashboard
+      summary: Get user dashboard
+      description: Get user dashboard with statistics and recent activity
+      responses:
+        '200':
+          description: Dashboard data retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dashboard'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /profile/orders:
+    get:
+      tags:
+        - Dashboard
+      summary: Get user orders
+      description: Get paginated list of user orders
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: Orders retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orders:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Order'
+                  total:
+                    type: integer
+                    example: 25
+                  total_spent:
+                    type: number
+                    format: float
+                    example: 299.99
+                  limit:
+                    type: integer
+                    example: 10
+                  offset:
+                    type: integer
+                    example: 0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /profile/orders/{id}:
+    get:
+      tags:
+        - Dashboard
+      summary: Get order details
+      description: Get detailed information about a specific order
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Order ID
+      responses:
+        '200':
+          description: Order retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /profile/purchased-templates:
+    get:
+      tags:
+        - Dashboard
+      summary: Get purchased templates
+      description: Get list of all templates purchased by the user
+      responses:
+        '200':
+          description: Purchased templates retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  templates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Template'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /profile/templates/{id}/download:
+    get:
+      tags:
+        - Dashboard
+      summary: Download template
+      description: Get download URL for a purchased template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Template ID
+      responses:
+        '200':
+          description: Download URL retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  download_url:
+                    type: string
+                    example: https://cdn.example.com/templates/template123.zip
+                  expires_at:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /profile/blog-posts:
+    get:
+      tags:
+        - Dashboard
+      summary: Get user blog posts
+      description: Get blog posts authored by the user
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Blog posts retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  posts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BlogPost'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # Session and Security Endpoints
+  /profile/login-history:
+    get:
+      tags:
+        - Sessions
+      summary: Get login history
+      description: Get user's login history with pagination
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Login history retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  history:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LoginHistory'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /profile/sessions:
+    get:
+      tags:
+        - Sessions
+      summary: Get active sessions
+      description: Get list of all active sessions for the user
+      responses:
+        '200':
+          description: Active sessions retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LoginHistory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /profile/activity:
+    get:
+      tags:
+        - Activity
+      summary: Get activity log
+      description: Get user's activity log with pagination
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Activity log retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activities:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ActivityLog'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # Admin Endpoints
+  /admin/dashboard:
+    get:
+      tags:
+        - Admin
+      summary: Get admin dashboard
+      description: Get admin dashboard with system statistics (admin only)
+      responses:
+        '200':
+          description: Admin dashboard retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminDashboard'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/users:
+    get:
+      tags:
+        - Admin
+      summary: List all users
+      description: Get paginated list of all users with filters (admin only)
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search by name or email
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [user, admin, moderator]
+          description: Filter by role
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, suspended, inactive]
+          description: Filter by status
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Users retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/users/{id}:
+    get:
+      tags:
+        - Admin
+      summary: Get user details
+      description: Get detailed information about a specific user (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: User ID
+      responses:
+        '200':
+          description: User retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags:
+        - Admin
+      summary: Delete user
+      description: Permanently delete a user account (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: User ID
+      responses:
+        '200':
+          description: User deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: User deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/users/{id}/role:
+    put:
+      tags:
+        - Admin
+      summary: Update user role
+      description: Change user's role (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: User ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - role
+              properties:
+                role:
+                  type: string
+                  enum: [user, admin, moderator]
+                  example: moderator
+      responses:
+        '200':
+          description: User role updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/users/{id}/suspend:
+    post:
+      tags:
+        - Admin
+      summary: Suspend user
+      description: Suspend a user account (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: User ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reason
+              properties:
+                reason:
+                  type: string
+                  example: Violation of terms of service
+      responses:
+        '200':
+          description: User suspended successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/users/{id}/unsuspend:
+    post:
+      tags:
+        - Admin
+      summary: Unsuspend user
+      description: Reactivate a suspended user account (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: User ID
+      responses:
+        '200':
+          description: User unsuspended successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/users/{id}/activity:
+    get:
+      tags:
+        - Admin
+      summary: Get user activity
+      description: Get activity log for a specific user (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: User ID
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: User activity retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activities:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ActivityLog'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # Public Endpoints
+  /users/{id}/profile:
+    get:
+      tags:
+        - Public
+      summary: Get public user profile
+      description: Get public profile of a user (respects privacy settings)
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: User ID
+      responses:
+        '200':
+          description: Public profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicUser'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token from AWS Cognito
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: John Doe
+        email:
+          type: string
+          format: email
+          example: john@example.com
+        avatar_url:
+          type: string
+          example: https://cdn.example.com/avatars/user123.jpg
+        bio:
+          type: string
+          example: Software developer and template enthusiast
+        phone_number:
+          type: string
+          example: +1234567890
+        address_line1:
+          type: string
+          example: 123 Main St
+        address_line2:
+          type: string
+          example: Apt 4B
+        city:
+          type: string
+          example: New York
+        state:
+          type: string
+          example: NY
+        country:
+          type: string
+          example: USA
+        postal_code:
+          type: string
+          example: "10001"
+        role:
+          type: string
+          enum: [user, admin, moderator]
+          example: user
+        status:
+          type: string
+          enum: [active, suspended, inactive]
+          example: active
+        email_verified:
+          type: boolean
+          example: true
+        preferences:
+          $ref: '#/components/schemas/UserPreferences'
+        last_login_at:
+          type: string
+          format: date-time
+        suspended_at:
+          type: string
+          format: date-time
+        suspended_by:
+          type: integer
+        suspension_reason:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PublicUser:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        avatar_url:
+          type: string
+        bio:
+          type: string
+        role:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    UserPreferences:
+      type: object
+      properties:
+        marketing_emails:
+          type: boolean
+          example: true
+        order_notifications:
+          type: boolean
+          example: true
+        blog_notifications:
+          type: boolean
+          example: true
+        language:
+          type: string
+          example: en
+        timezone:
+          type: string
+          example: UTC
+        theme:
+          type: string
+          enum: [light, dark, auto]
+          example: light
+        profile_visibility:
+          type: string
+          enum: [public, private]
+          example: public
+        show_email:
+          type: boolean
+          example: false
+        show_purchase_history:
+          type: boolean
+          example: false
+
+    AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        refresh_token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        expires_in:
+          type: integer
+          example: 3600
+        token_type:
+          type: string
+          example: Bearer
+
+    Dashboard:
+      type: object
+      properties:
+        stats:
+          type: object
+          properties:
+            total_orders:
+              type: integer
+              example: 12
+            total_spent:
+              type: number
+              format: float
+              example: 299.99
+            templates_purchased:
+              type: integer
+              example: 8
+            blog_posts_authored:
+              type: integer
+              example: 5
+            account_age_days:
+              type: integer
+              example: 45
+        recent_orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/Order'
+        recent_blog_posts:
+          type: array
+          items:
+            $ref: '#/components/schemas/BlogPost'
+
+    AdminDashboard:
+      type: object
+      properties:
+        total_users:
+          type: integer
+          example: 1250
+        active_users:
+          type: integer
+          example: 1100
+        suspended_users:
+          type: integer
+          example: 50
+        new_users_today:
+          type: integer
+          example: 15
+        total_orders:
+          type: integer
+          example: 5420
+        total_revenue:
+          type: number
+          format: float
+          example: 124599.99
+        total_templates:
+          type: integer
+          example: 156
+        total_blog_posts:
+          type: integer
+          example: 89
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 123
+        user_id:
+          type: integer
+          example: 1
+        template_id:
+          type: integer
+          example: 45
+        amount:
+          type: number
+          format: float
+          example: 29.99
+        status:
+          type: string
+          enum: [pending, completed, failed, refunded]
+          example: completed
+        stripe_payment_intent_id:
+          type: string
+          example: pi_1234567890
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Template:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 45
+        name:
+          type: string
+          example: E-commerce Template
+        description:
+          type: string
+          example: Modern e-commerce template with cart functionality
+        price:
+          type: number
+          format: float
+          example: 29.99
+        image_url:
+          type: string
+          example: https://cdn.example.com/templates/template45.jpg
+        file_url:
+          type: string
+          example: https://cdn.example.com/templates/template45.zip
+        category_id:
+          type: integer
+          example: 3
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    BlogPost:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 78
+        title:
+          type: string
+          example: Getting Started with React
+        slug:
+          type: string
+          example: getting-started-with-react
+        content:
+          type: string
+          example: React is a JavaScript library...
+        author_id:
+          type: integer
+          example: 1
+        category_id:
+          type: integer
+          example: 2
+        published:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    LoginHistory:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 456
+        user_id:
+          type: integer
+          example: 1
+        ip_address:
+          type: string
+          example: 192.168.1.100
+        user_agent:
+          type: string
+          example: Mozilla/5.0 (Windows NT 10.0; Win64; x64)...
+        device:
+          type: string
+          example: Desktop - Windows
+        location:
+          type: string
+          example: New York, USA
+        login_at:
+          type: string
+          format: date-time
+        logout_at:
+          type: string
+          format: date-time
+        success:
+          type: boolean
+          example: true
+        failure_reason:
+          type: string
+          example: Invalid password
+
+    ActivityLog:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 789
+        user_id:
+          type: integer
+          example: 1
+        action:
+          type: string
+          enum:
+            - profile_updated
+            - preferences_updated
+            - avatar_uploaded
+            - avatar_deleted
+            - password_changed
+            - email_verified
+            - account_deactivated
+            - account_deleted
+            - role_changed
+            - user_suspended
+            - user_unsuspended
+          example: profile_updated
+        resource:
+          type: string
+          example: user
+        resource_id:
+          type: integer
+          example: 1
+        details:
+          type: object
+          additionalProperties: true
+          example:
+            name: John Doe Updated
+            bio: New bio text
+        ip_address:
+          type: string
+          example: 192.168.1.100
+        user_agent:
+          type: string
+          example: Mozilla/5.0...
+        created_at:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Invalid request
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Invalid request parameters
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Authentication required
+
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Insufficient permissions
+
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Resource not found
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: An unexpected error occurred
