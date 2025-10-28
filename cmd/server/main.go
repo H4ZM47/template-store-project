@@ -114,6 +114,14 @@ func main() {
 		})
 	})
 
+	// Serve Swagger documentation
+	r.GET("/swagger.yaml", func(c *gin.Context) {
+		c.File("./swagger.yaml")
+	})
+	r.GET("/api-docs", func(c *gin.Context) {
+		c.File("./web/api-docs.html")
+	})
+
 	// API routes group
 	api := r.Group("/api/v1")
 	{
