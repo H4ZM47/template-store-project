@@ -84,6 +84,13 @@ func main() {
 	userService := services.NewUserService(db)
 	orderService := services.NewOrderService(db)
 
+	// Initialize new user account management services
+	emailService := services.NewEmailService(cfg)
+	securityService := services.NewSecurityService(db, authService)
+	profileService := services.NewProfileService(db, storageService, authService)
+	dashboardService := services.NewDashboardService(db)
+	adminService := services.NewAdminService(db, securityService)
+
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(authService)
 	templateHandler := handlers.NewTemplateHandler(templateService, storageService)
@@ -91,6 +98,12 @@ func main() {
 	blogHandler := handlers.NewBlogHandler(blogService)
 	userHandler := handlers.NewUserHandler(userService)
 	paymentHandler := handlers.NewPaymentHandler(paymentService, templateService, orderService, userService, cfg.Stripe.WebhookSecret)
+
+	// Initialize new user account management handlers
+	profileHandler := handlers.NewProfileHandler(profileService, securityService)
+	securityHandler := handlers.NewSecurityHandler(securityService, emailService)
+	dashboardHandler := handlers.NewDashboardHandler(dashboardService)
+	adminHandler := handlers.NewAdminHandler(adminService)
 
 	// Health check endpoint
 	r.GET("/health", func(c *gin.Context) {
@@ -115,6 +128,11 @@ func main() {
 		{
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", authHandler.Login)
+
+			// Password management (public)
+			auth.POST("/forgot-password", securityHandler.ForgotPassword)
+			auth.POST("/reset-password", securityHandler.ResetPassword)
+			auth.POST("/verify-email", securityHandler.VerifyEmail)
 		}
 
 		// Webhook routes
@@ -126,10 +144,12 @@ func main() {
 		// Authenticated routes group
 		authenticated := api.Group("/")
 		if gin.Mode() != gin.DebugMode {
-			authenticated.Use(middleware.AuthMiddleware(cfg))
+			authenticated.Use(middleware.AuthMiddleware(cfg, db))
 		} else {
-			// In debug mode, use a dummy middleware that does nothing
+			// In debug mode, use a dummy middleware that sets a test user ID
 			authenticated.Use(func(c *gin.Context) {
+				// Set a test user ID for debugging
+				c.Set("userID", uint(1))
 				c.Next()
 			})
 		}
@@ -137,7 +157,62 @@ func main() {
 			// Checkout route
 			authenticated.POST("/checkout", paymentHandler.CreateCheckoutSession)
 
-			// User routes
+			// Profile routes
+			profile := authenticated.Group("/profile")
+			{
+				profile.GET("", profileHandler.GetProfile)
+				profile.PUT("", profileHandler.UpdateProfile)
+				profile.POST("/avatar", profileHandler.UploadAvatar)
+				profile.DELETE("/avatar", profileHandler.DeleteAvatar)
+
+				// Preferences
+				profile.GET("/preferences", profileHandler.GetPreferences)
+				profile.PUT("/preferences", profileHandler.UpdatePreferences)
+
+				// Account management
+				profile.POST("/deactivate", profileHandler.DeactivateAccount)
+				profile.DELETE("", profileHandler.DeleteAccount)
+
+				// Dashboard
+				profile.GET("/dashboard", dashboardHandler.GetDashboard)
+				profile.GET("/orders", dashboardHandler.GetOrders)
+				profile.GET("/orders/:id", dashboardHandler.GetOrder)
+				profile.GET("/purchased-templates", dashboardHandler.GetPurchasedTemplates)
+				profile.GET("/templates/:id/download", dashboardHandler.GetTemplateDownload)
+				profile.GET("/blog-posts", dashboardHandler.GetBlogPosts)
+
+				// Security
+				profile.GET("/login-history", securityHandler.GetLoginHistory)
+				profile.GET("/sessions", securityHandler.GetActiveSessions)
+				profile.GET("/activity", securityHandler.GetActivityLog)
+			}
+
+			// Authenticated auth routes
+			authSecure := authenticated.Group("/auth")
+			{
+				authSecure.POST("/change-password", securityHandler.ChangePassword)
+				authSecure.POST("/resend-verification", securityHandler.ResendVerification)
+				authSecure.POST("/logout-session/:id", securityHandler.LogoutSession)
+				authSecure.POST("/logout-all", securityHandler.LogoutAll)
+			}
+
+			// Admin routes (requires admin role)
+			admin := authenticated.Group("/admin")
+			admin.Use(middleware.RequireAdmin(db))
+			{
+				admin.GET("/dashboard", adminHandler.GetDashboard)
+
+				// User management
+				admin.GET("/users", adminHandler.ListUsers)
+				admin.GET("/users/:id", adminHandler.GetUser)
+				admin.PUT("/users/:id/role", adminHandler.UpdateUserRole)
+				admin.POST("/users/:id/suspend", adminHandler.SuspendUser)
+				admin.POST("/users/:id/unsuspend", adminHandler.UnsuspendUser)
+				admin.DELETE("/users/:id", adminHandler.DeleteUser)
+				admin.GET("/users/:id/activity", adminHandler.GetUserActivity)
+			}
+
+			// User routes (existing)
 			users := authenticated.Group("/users")
 			{
 				users.GET("", userHandler.ListUsers)
@@ -166,6 +241,12 @@ func main() {
 		// Public routes
 		public := api.Group("/")
 		{
+			// Public user profile
+			users := public.Group("/users")
+			{
+				users.GET("/:id/profile", profileHandler.GetPublicProfile)
+			}
+
 			// Payment routes
 			payments := public.Group("/payment")
 			{
