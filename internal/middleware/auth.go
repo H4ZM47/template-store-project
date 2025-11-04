@@ -6,11 +6,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	cognitojwt "github.com/jhosan7/cognito-jwt-verify"
+	"gorm.io/gorm"
 	"template-store/internal/config"
+	"template-store/internal/models"
 )
 
 // AuthMiddleware creates a Gin middleware for JWT authentication.
-func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
+func AuthMiddleware(cfg *config.Config, db *gorm.DB) gin.HandlerFunc {
 	// Initialize the Cognito JWT validator
 	cognitoConfig := cognitojwt.Config{
 		UserPoolId: cfg.AWS.CognitoPoolID,
@@ -49,6 +51,28 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 
 		// Set the user claims in the context for downstream handlers
 		c.Set("user_claims", claims)
+
+		// Extract Cognito sub (user identifier) from claims using the Claims interface
+		sub, err := claims.GetSubject()
+		if err != nil || sub == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token: missing sub claim"})
+			return
+		}
+
+		// Look up user in database by Cognito sub
+		var user models.User
+		if err := db.Where("cognito_subject = ?", sub).First(&user).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
+				return
+			}
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to lookup user"})
+			return
+		}
+
+		// Set userID in context for handlers to use
+		c.Set("userID", user.ID)
+		c.Set("user", user)
 
 		c.Next()
 	}
