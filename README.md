@@ -1,12 +1,13 @@
 # Template Store & Blog Platform
 
-A modern web application for selling digital templates and hosting a company blog, built with Go, PostgreSQL, and AWS services.
+A modern web application for selling digital templates and hosting a company blog, built with Node.js, TypeScript, PostgreSQL, and AWS services.
 
 ## Architecture
 
 This project follows a clean architecture pattern with:
-- **Backend**: Go with Gin framework
-- **Database**: PostgreSQL on AWS RDS
+- **Backend**: Node.js with TypeScript and Express.js framework
+- **ORM**: TypeORM for database management
+- **Database**: PostgreSQL (production) / SQLite (development)
 - **Storage**: AWS S3 with CloudFront CDN
 - **Authentication**: AWS Cognito
 - **Payments**: Stripe integration
@@ -15,38 +16,39 @@ This project follows a clean architecture pattern with:
 
 ## Prerequisites
 
-- Go 1.21 or higher
-- PostgreSQL 13 or higher
+- Node.js 18.0 or higher
+- npm 9.0 or higher
+- PostgreSQL 13 or higher (for production)
 - Docker (optional, for containerized development)
 - AWS CLI (for deployment)
 
 ## Quick Start
 
-### Option 1: Using Development Scripts (Recommended)
+### Option 1: Using npm Scripts (Recommended)
 
-The easiest way to get started is using our automated development scripts:
+The easiest way to get started:
 
 ```bash
 # Clone the repository
 git clone <repository-url>
 cd template-store-project
 
-# Make scripts executable (Unix/Linux/macOS)
-chmod +x scripts/*.sh
+# Install dependencies
+npm install
 
-# Start all services (database, backend, frontend)
-./scripts/start-dev.sh
+# Set up environment variables
+cp .env.example .env
+# Edit .env with your configuration values
 
-# Or use make commands
-make start
+# Start development server with hot reload
+npm run dev
 ```
 
 This will automatically:
-- ✅ Start PostgreSQL database
-- ✅ Create the `template_store` database
-- ✅ Start backend API server on port 8080
-- ✅ Start frontend web server on port 3000
-- ✅ Open your browser to http://localhost:3000
+- ✅ Start the backend API server on port 8080
+- ✅ Connect to the database (PostgreSQL or SQLite)
+- ✅ Enable hot reload for development
+- ✅ Set up TypeORM with automatic synchronization
 
 ### Option 2: Manual Setup
 
@@ -57,169 +59,292 @@ If you prefer manual setup or need to customize the configuration:
 git clone <repository-url>
 cd template-store-project
 
-# 2. Set up environment variables
-cp env.example .env
+# 2. Install dependencies
+npm install
+
+# 3. Set up environment variables
+cp .env.example .env
 # Edit .env with your configuration values
 
-# 3. Install dependencies
-go mod download
-
-# 4. Set up PostgreSQL and database
+# 4. Set up PostgreSQL (for production)
 createdb template_store
+# Or use SQLite for development (automatic)
 
-# 5. Start backend server
-go run cmd/server/main.go &
+# 5. Build the project
+npm run build
 
-# 6. Start frontend server (in another terminal)
-go run cmd/web/main.go
+# 6. Start the server
+npm start
 ```
 
 ### Access Your Application
 
 Once started, you can access:
-- **Main Application**: http://localhost:3000
-- **Test Page**: http://localhost:3000/test.html  
+- **Frontend**: http://localhost:3000 (served from web/ directory)
 - **Backend API**: http://localhost:8080/api/v1/
-- **Health Check**: http://localhost:8080/health
+- **Health Check**: http://localhost:8080/api/v1/health
+- **API Documentation**: See [swagger.yaml](swagger.yaml)
 
 ## Development Scripts
 
-We provide comprehensive scripts to manage your development environment:
+Available npm scripts for development:
 
-### Available Scripts
-
-- **`./scripts/start-dev.sh`** - Full development environment startup
-- **`./scripts/stop-dev.sh`** - Graceful shutdown of all services
-- **`./scripts/quick-start.sh`** - Lightweight startup for experienced developers
-- **`./scripts/start-dev.bat`** - Windows batch script
-
-### Make Commands
-
-For even easier development, use our Makefile:
+### Core Commands
 
 ```bash
-make help          # Show all available commands
-make start         # Start all services
-make stop          # Stop all services
-make status        # Show service status
-make logs          # View recent logs
-make db-seed       # Seed database with sample data
-make dev           # Full development setup + open browser
-make clean         # Clean temporary files
+npm run dev        # Start development server with hot reload
+npm run build      # Compile TypeScript to JavaScript
+npm start          # Start production server
+npm run lint       # Run ESLint code analysis
+npm run format     # Format code with Prettier
+npm run typecheck  # Type-check without emitting files
 ```
 
 ### Development Workflow
 
 ```bash
-# Fresh start
-make fresh         # Stop, clean, start, seed database
+# Initial setup
+npm install        # Install all dependencies
 
 # Daily development
-make start         # Start all services
-make logs          # Check logs if needed
-make stop          # Stop when done
+npm run dev        # Start dev server (watches for changes)
 
-# Database operations
-make db-seed       # Add sample data
-make db-reset      # Reset database
-make db-connect    # Connect with psql
+# Before committing
+npm run lint       # Check code style
+npm run format     # Format code
+npm run typecheck  # Verify types
+
+# Production build
+npm run build      # Build for production
+npm start          # Run production server
 ```
-
-### Script Features
-
-- ✅ **Automatic PostgreSQL management** - Detects and starts database
-- ✅ **Database setup** - Creates database if it doesn't exist
-- ✅ **Process management** - Tracks PIDs, graceful shutdown
-- ✅ **Comprehensive logging** - Logs stored in `tmp/logs/`
-- ✅ **Cross-platform support** - Unix/Linux/macOS/Windows
-- ✅ **Error handling** - Detailed error messages and troubleshooting
-- ✅ **Service health checks** - Verifies all services are running
-
-For detailed documentation, see [`scripts/README.md`](scripts/README.md).
 
 ## Development
 
 ### Project Structure
 ```
 template-store-project/
-├── cmd/                    # Application entry points
-│   └── server/            # Main server application
-├── internal/              # Private application code
-│   ├── config/           # Configuration management
-│   ├── models/           # Database models
-│   ├── handlers/         # HTTP request handlers
-│   ├── middleware/       # Custom middleware
-│   └── services/         # Business logic
-├── pkg/                  # Public libraries
-├── web/                  # Frontend assets
-├── migrations/           # Database migrations
-├── docs/                 # Documentation
-└── scripts/              # Build and deployment scripts
+├── src/                    # TypeScript source code
+│   ├── config/            # Configuration management
+│   ├── database/          # Database connection setup
+│   ├── models/            # TypeORM entities (10 models)
+│   ├── routes/            # API route handlers (7 modules)
+│   ├── middleware/        # Authentication & RBAC middleware
+│   ├── services/          # Business logic layer (9 services)
+│   ├── utils/             # Utility functions (logger, etc.)
+│   └── server.ts          # Main application entry point
+├── dist/                  # Compiled JavaScript output
+├── web/                   # Frontend assets (HTML/CSS/JS)
+├── node_modules/          # Dependencies
+├── logs/                  # Application logs
+├── scripts/               # Utility scripts
+├── package.json           # npm dependencies and scripts
+├── tsconfig.json          # TypeScript configuration
+├── .env.example           # Environment variables template
+└── docs/                  # Documentation (*.md files)
 ```
 
-### Available Endpoints
+### API Endpoints
 
-- `GET /health` - Health check
-- `GET /api/v1/` - API information
+The backend provides comprehensive REST APIs:
+
+#### Authentication (`/api/v1/auth`)
+- `POST /register` - User registration
+- `POST /login` - User login
+- `POST /forgot-password` - Password reset request
+- `POST /reset-password` - Password reset confirmation
+- `POST /change-password` - Change password (authenticated)
+
+#### Profile (`/api/v1/profile`)
+- `GET /` - Get user profile
+- `PUT /` - Update user profile
+- `GET /orders` - List user orders
+- `GET /purchased-templates` - List purchased templates
+
+#### Templates (`/api/v1/templates`)
+- `GET /` - List all templates
+- `GET /:id` - Get template details
+- `POST /` - Create template (author/admin)
+- `PUT /:id` - Update template (author/admin)
+- `DELETE /:id` - Delete template (author/admin)
+
+#### Blog (`/api/v1/blog`)
+- `GET /` - List blog posts
+- `GET /:id` - Get blog post
+- `POST /` - Create post (author/admin)
+- `PUT /:id` - Update post (author/admin)
+- `DELETE /:id` - Delete post (author/admin)
+
+#### Payment (`/api/v1/payment`)
+- `POST /checkout` - Create Stripe checkout session
+- `POST /webhooks/stripe` - Stripe webhook handler
+
+For full API documentation, see [swagger.yaml](swagger.yaml).
 
 ### Environment Variables
 
-See `env.example` for all available configuration options.
+See `.env.example` for all available configuration options including:
+- Database connection settings
+- AWS Cognito configuration
+- AWS S3 credentials
+- Stripe API keys
+- SendGrid API key
 
 ## Testing
 
 ```bash
-# Run all tests
-go test ./...
+# Type checking
+npm run typecheck
 
-# Run tests with coverage
-go test -cover ./...
+# Linting
+npm run lint
 
-# Run specific test
-go test ./internal/handlers
+# Format checking
+npm run format
+
+# Note: Unit and integration tests are planned for future implementation
 ```
 
 ## Building
 
 ```bash
-# Build for current platform
-go build -o bin/server cmd/server/main.go
+# Build TypeScript to JavaScript
+npm run build
 
-# Build for specific platform
-GOOS=linux GOARCH=amd64 go build -o bin/server cmd/server/main.go
+# Output will be in dist/ directory
+# Run with: npm start
 ```
 
 ## Deployment
 
 ### Local Development
 ```bash
-# Run with hot reload (requires air)
-air
+# Run with hot reload (recommended)
+npm run dev
 
-# Run with Docker
+# Run with Docker (if docker-compose.yml configured)
 docker-compose up
 ```
 
 ### Production
-The application is designed to be deployed on AWS ECS with:
-- Application Load Balancer
-- RDS PostgreSQL
-- S3 for file storage
-- CloudFront for CDN
+
+The application is designed to be deployed on AWS with the following setup:
+
+#### Infrastructure
+- **Compute**: AWS ECS/EC2 or any Node.js hosting platform
+- **Database**: AWS RDS PostgreSQL
+- **Storage**: AWS S3 for file uploads
+- **CDN**: CloudFront for content delivery
+- **Authentication**: AWS Cognito user pools
+
+#### Deployment Steps
+
+1. **Build the application:**
+   ```bash
+   npm run build
+   ```
+
+2. **Set environment variables:**
+   - Set `NODE_ENV=production`
+   - Configure all AWS credentials
+   - Set database connection strings
+   - Configure Stripe and SendGrid API keys
+
+3. **Run the production server:**
+   ```bash
+   npm start
+   ```
+
+4. **Process Management:**
+   - Use PM2, systemd, or Docker for process management
+   - Example with PM2:
+     ```bash
+     npm install -g pm2
+     pm2 start dist/server.js --name template-store
+     pm2 save
+     ```
+
+#### Production Checklist
+- [ ] Set `NODE_ENV=production`
+- [ ] Use PostgreSQL (not SQLite)
+- [ ] Disable TypeORM `synchronize` (use migrations)
+- [ ] Configure proper CORS settings
+- [ ] Enable HTTPS/TLS
+- [ ] Set up monitoring and logging
+- [ ] Configure backup strategy
+- [ ] Set up CI/CD pipeline
+
+## Technology Stack
+
+### Backend
+- **Language**: TypeScript 5.7
+- **Runtime**: Node.js 18+
+- **Framework**: Express.js 4.x
+- **ORM**: TypeORM 0.3.x
+- **Database**: PostgreSQL / SQLite
+- **Logging**: Winston
+
+### External Services
+- **AWS Cognito**: User authentication
+- **AWS S3**: File storage
+- **Stripe**: Payment processing
+- **SendGrid**: Email notifications
+
+### Frontend
+- **HTML/CSS/JS**: Vanilla JavaScript
+- **CSS Framework**: Tailwind CSS
+- **Markdown**: Marked library for blog rendering
+
+## Database Models
+
+The application includes 10 TypeORM entities:
+1. **User** - User accounts and profiles
+2. **Category** - Content categories
+3. **Template** - Digital templates for sale
+4. **BlogPost** - Blog articles with Markdown support
+5. **Order** - Purchase orders and transaction history
+6. **LoginHistory** - User login tracking
+7. **ActivityLog** - User activity tracking
+8. **PasswordResetToken** - Password reset tokens
+9. **EmailVerificationToken** - Email verification tokens
+10. **UserPreferences** - User settings and preferences
+
+## Migration History
+
+This project was recently migrated from Go to Node.js/TypeScript. For details, see:
+- [BACKEND_MIGRATION.md](BACKEND_MIGRATION.md) - Complete migration documentation
+- [CLEANUP_SUMMARY.md](CLEANUP_SUMMARY.md) - Cleanup details
+
+## Documentation
+
+Additional documentation is available:
+- [API_DOCUMENTATION.md](API_DOCUMENTATION.md) - API reference
+- [AUTHENTICATION_SUMMARY.md](AUTHENTICATION_SUMMARY.md) - Authentication details
+- [PAYMENT_INTEGRATION_SUMMARY.md](PAYMENT_INTEGRATION_SUMMARY.md) - Payment integration
+- [BLOG_MANAGEMENT_GUIDE.md](BLOG_MANAGEMENT_GUIDE.md) - Blog management
+- [swagger.yaml](swagger.yaml) - OpenAPI specification
 
 ## Contributing
 
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Add tests for new functionality
-5. Ensure all tests pass
+4. Run linting and type checking:
+   ```bash
+   npm run lint
+   npm run typecheck
+   npm run format
+   ```
+5. Test your changes thoroughly
 6. Submit a pull request
 
 ## License
 
-[Add your license here]
+MIT License
 
 ## Support
 
-For support and questions, please [create an issue](link-to-issues) or contact the development team. 
+For support and questions:
+- Create an issue on GitHub
+- Check existing documentation in the [docs](.) folder
+- Review the migration guide if you have questions about the architecture 
